@@ -7,7 +7,7 @@ firebase.initializeApp({
   authDomain: "mokhtar-notifications.firebaseapp.com",
   projectId: "mokhtar-notifications",
   messagingSenderId: "205339221427",
-  appId: "1:205339221427:web:5207a3f05cdac86a377fc6",
+  appId: "205339221427:web:5207a3f05cdac86a377fc6",
 });
 
 const messaging = firebase.messaging();
