@@ -396,6 +396,42 @@ if (debtErr) throw debtErr;
             >
               Payout (-)
             </button>
+            <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+  <button
+    onClick={async () => {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        alert("Permission denied");
+        return;
+      }
+
+      const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: "BCqJ7j-dqFxSSaBAbMgJeCnfphtG_8r7rEgWa0jflP_s6O14TT8KOAq-ZI5HEE4iwU8SDlPrnRULFuDXbaAG5cY"
+      });
+
+      await fetch("/api/push/register", {
+        method: "POST",
+        body: JSON.stringify({ token: JSON.stringify(sub) })
+      });
+
+      alert("Notifications enabled ✅");
+    }}
+  >
+    Enable Notifications
+  </button>
+
+  <button
+    onClick={async () => {
+      await fetch("/api/push/send", { method: "POST" });
+      alert("Test sent 🚀");
+    }}
+  >
+    Send Test
+  </button>
+</div>
           </div>
 
           {payType === "payout" ? (
