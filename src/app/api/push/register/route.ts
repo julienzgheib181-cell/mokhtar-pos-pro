@@ -1,11 +1,13 @@
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function POST(req: Request) {
   try {
-    const { token } = await req.json();
+    const body = await req.json().catch(() => null);
+    const token = body?.token;
 
     if (!token) {
       return NextResponse.json({ ok: false, error: "No token" });
