@@ -1,16 +1,26 @@
 export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin"; // (service role)
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function POST(req: Request) {
-  const { token } = await req.json();
-  if (!token) return NextResponse.json({ ok: false, error: "Missing token" }, { status: 400 });
+  try {
+    const { token } = await req.json();
 
-  // خزّن/حدّث (حتى ما يتكرر)
-  const { error } = await supabaseAdmin
-    .from("push_tokens")
-    .upsert({ token }, { onConflict: "token" });
+    if (!token) {
+      return NextResponse.json({ ok: false, error: "No token" });
+    }
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+    const { error } = await supabaseAdmin
+      .from("push_tokens")
+      .upsert({ token }, { onConflict: "token" });
+
+    if (error) {
+      return NextResponse.json({ ok: false, error: error.message });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: String(e) });
+  }
 }
