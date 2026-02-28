@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { notify } from '@/lib/notify';
 
 type DebtRow = {
   id: string;
@@ -13,7 +14,28 @@ type DebtRow = {
   status: 'pending' | 'paid' | string;
   paid_at: string | null;
   paid_amount: number | null;
+  due_at?: string | null;
 };
+
+function fmtDate(d?: string | null) {
+  if (!d) return '-';
+  const dt = new Date(d);
+  const day = String(dt.getDate()).padStart(2, '0');
+  const mon = String(dt.getMonth() + 1).padStart(2, '0');
+  const yr = dt.getFullYear();
+  return `${day}/${mon}/${yr}`;
+}
+
+function fmtDateTime(d?: string | null) {
+  if (!d) return '-';
+  const dt = new Date(d);
+  const day = String(dt.getDate()).padStart(2, '0');
+  const mon = String(dt.getMonth() + 1).padStart(2, '0');
+  const yr = dt.getFullYear();
+  const hh = String(dt.getHours()).padStart(2, '0');
+  const mm = String(dt.getMinutes()).padStart(2, '0');
+  return `${day}/${mon}/${yr} ${hh}:${mm}`;
+}
 
 function clsx(...v: Array<string | false | null | undefined>) {
   return v.filter(Boolean).join(' ');
@@ -34,7 +56,7 @@ export default function DebtsPage() {
     setError(null);
     const { data, error } = await supabase
       .from('debts')
-      .select('id,created_at,customer_name,customer_phone,amount,due_date,status,paid_at,paid_amount')
+      .select('id,created_at,customer_name,customer_phone,amount,due_date,due_at,status,paid_at,paid_amount')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -74,6 +96,9 @@ export default function DebtsPage() {
       items: [],
     });
 
+    // Notify owner
+    notify('Debt paid', `${debt.customer_name} • $${Number(paidAmount).toFixed(2)}`);
+
     await load();
   }
 
@@ -96,7 +121,7 @@ export default function DebtsPage() {
         </div>
       )}
 
-      <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 shadow-lg">
+      <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 shadow-lg overflow-hidden">
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
           <div className="text-sm font-semibold">All debts</div>
           <button
@@ -108,59 +133,65 @@ export default function DebtsPage() {
           </button>
         </div>
 
-        <div className="p-5">
+        <div className="p-4">
           {loading ? (
             <div className="text-sm text-white/60">Loading…</div>
           ) : rows.length === 0 ? (
             <div className="text-sm text-white/60">No debts yet.</div>
           ) : (
-            <div className="space-y-3">
-              {rows.map((d) => {
-                const isPending = d.status === 'pending';
-                return (
-                  <div key={d.id} className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <div className="text-sm font-semibold">{d.customer_name}</div>
-                        <div className="text-xs text-white/60">
-                          {d.customer_phone ? d.customer_phone : 'No phone'} • {new Date(d.created_at).toLocaleString()}
-                          {d.due_date ? ` • Due: ${d.due_date}` : ''}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
-                          <div className="text-lg font-semibold">${Number(d.amount).toFixed(2)}</div>
-                          <div
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-xs text-white/60">
+                  <tr className="border-b border-white/10">
+                    <th className="px-2 py-2 text-left font-semibold">Customer</th>
+                    <th className="px-2 py-2 text-left font-semibold">Phone</th>
+                    <th className="px-2 py-2 text-right font-semibold">Amount</th>
+                    <th className="px-2 py-2 text-left font-semibold">Created</th>
+                    <th className="px-2 py-2 text-left font-semibold">Due</th>
+                    <th className="px-2 py-2 text-left font-semibold">Status</th>
+                    <th className="px-2 py-2 text-right font-semibold">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((d) => {
+                    const isPending = d.status === 'pending';
+                    return (
+                      <tr key={d.id} className="border-b border-white/5 hover:bg-white/5">
+                        <td className="px-2 py-2 whitespace-nowrap font-semibold">{d.customer_name}</td>
+                        <td className="px-2 py-2 whitespace-nowrap text-white/80">{d.customer_phone || '-'}</td>
+                        <td className="px-2 py-2 whitespace-nowrap text-right font-semibold">${Number(d.amount).toFixed(2)}</td>
+                        <td className="px-2 py-2 whitespace-nowrap text-white/70">{fmtDateTime(d.created_at)}</td>
+                        <td className="px-2 py-2 whitespace-nowrap text-white/70">{d.due_at ? fmtDateTime(d.due_at) : (d.due_date ? fmtDate(d.due_date) : '-')}</td>
+                        <td className="px-2 py-2 whitespace-nowrap">
+                          <span
                             className={clsx(
-                              'mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs uppercase',
+                              'inline-flex rounded-full border px-2 py-0.5 text-[11px] uppercase',
                               isPending
                                 ? 'border-amber-400/30 bg-amber-500/10 text-amber-100'
                                 : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-100'
                             )}
                           >
                             {d.status}
-                          </div>
-                        </div>
-
-                        {isPending ? (
-                          <button
-                            type="button"
-                            onClick={() => markPaid(d)}
-                            className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-black hover:brightness-110"
-                          >
-                            Mark paid
-                          </button>
-                        ) : (
-                          <div className="text-xs text-white/60">
-                            Paid {d.paid_at ? new Date(d.paid_at).toLocaleString() : ''}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2 whitespace-nowrap text-right">
+                          {isPending ? (
+                            <button
+                              type="button"
+                              onClick={() => markPaid(d)}
+                              className="rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-black hover:brightness-110"
+                            >
+                              Mark paid
+                            </button>
+                          ) : (
+                            <span className="text-xs text-white/60">Paid {d.paid_at ? fmtDateTime(d.paid_at) : ''}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

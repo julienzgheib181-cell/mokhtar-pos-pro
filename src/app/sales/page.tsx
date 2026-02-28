@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabaseClient";
+import PushButtons from "@/components/PushButtons";
+import { notify } from "@/lib/notify";
 
 const CATEGORIES = [
   "Phones",
@@ -104,6 +106,7 @@ export default function SalesPage() {
   // debt fields
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [dueAt, setDueAt] = useState<string>(""); // datetime-local
 
   // latest sales
   const [latest, setLatest] = useState<SaleRow[]>([]);
@@ -236,6 +239,10 @@ export default function SalesPage() {
           items: [],
         });
         if (error) throw error;
+
+        // Notify owner
+        notify("Payout (-)", `${money(amt)} • ${note.trim() || category}`);
+
         setPayoutAmount("");
         setNote("");
         await refreshLatest();
@@ -270,8 +277,24 @@ export default function SalesPage() {
         .single();
       if (saleErr) throw saleErr;
 
+      // Notify owner for every sale/debt creation
+      if (payType === "cash") {
+        notify(
+          "Sale (+)",
+          `${category} • ${money(amount)}${note.trim() ? ` • ${note.trim()}` : ""}`
+        );
+      }
+      if (payType === "debt") {
+        notify(
+          "Debt (new)",
+          `${customerName.trim()} • ${customerPhone.trim()} • ${money(amount)}${dueAt ? ` • Due: ${new Date(dueAt).toLocaleString()}` : ""}`
+        );
+      }
+
       // If debt: also create a debt record (pending)
       if (payType === "debt") {
+        const dueISO = dueAt ? new Date(dueAt).toISOString() : null;
+        const dueDate = dueAt ? dueAt.split("T")[0] : null;
         const { error: debtErr } = await supabase.from("debts").insert({
           customer_name: customerName.trim(),
           customer_phone: customerPhone.trim(),
@@ -280,8 +303,20 @@ export default function SalesPage() {
           status: "pending",
           sale_id: saleData?.id ?? null,
           note: note.trim() || null,
+          due_at: dueISO,
+          due_date: dueDate,
         });
         if (debtErr) throw debtErr;
+      }
+
+      // Extra context notification for Wish Money (transfer/receive)
+      const isWish = String(category).toLowerCase().includes("wish");
+      if (isWish) {
+        const label =
+          itemsPayload.find((x) => String(x.name).toLowerCase().includes("transfer"))?.name ||
+          itemsPayload.find((x) => String(x.name).toLowerCase().includes("receive"))?.name ||
+          "Wish Money";
+        notify("Wish Money", `${label} • ${money(amount)}${note.trim() ? ` • ${note.trim()}` : ""}`);
       }
 
       // reset
@@ -289,6 +324,7 @@ export default function SalesPage() {
       setNote("");
       setCustomerName("");
       setCustomerPhone("");
+      setDueAt("");
       await refreshLatest();
     } catch (e: any) {
       setErr(e?.message ?? "Save failed");
@@ -305,6 +341,7 @@ export default function SalesPage() {
       setErr(error.message);
       return;
     }
+    notify("Sale deleted", `A sale was deleted (hidden from totals).`);
     await refreshLatest();
   }
 
@@ -322,8 +359,17 @@ export default function SalesPage() {
   return (
     <div className="page">
       <div className="header">
-        <h1>Sales</h1>
-        <div className="sub">USD • quick categories • cash / debt / payout</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <h1>Sales</h1>
+            <div className="sub">
+              <span style={{ fontWeight: 900 }}>Today:</span> {new Date().toLocaleDateString()} • USD • fast POS
+            </div>
+          </div>
+          <div style={{ minWidth: 280 }}>
+            <PushButtons compact />
+          </div>
+        </div>
       </div>
 
       <div className="grid metrics" style={{ marginTop: 14 }}>
@@ -349,6 +395,28 @@ export default function SalesPage() {
         <div className="card">
           <div className="sectionTitle">POS</div>
 
+          {/* Pay controls (top-right) */}
+          <div className="payTop">
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className={`pill ${payType === "cash" ? "active" : ""}`} onClick={() => setPayType("cash")} type="button">
+                Cash (+)
+              </button>
+              <button className={`pill ${payType === "debt" ? "active" : ""}`} onClick={() => setPayType("debt")} type="button">
+                Debt
+              </button>
+              <button className={`pill ${payType === "payout" ? "active" : ""}`} onClick={() => setPayType("payout")} type="button">
+                Payout (-)
+              </button>
+            </div>
+            <div className="payTopRight">
+              <div className="muted" style={{ fontWeight: 900, fontSize: 12 }}>Total</div>
+              <div className="big" style={{ fontSize: 22 }}>{payType === "payout" ? money(Number(payoutAmount || 0)) : money(total)}</div>
+              <button className="btn primary" type="button" onClick={onPay} disabled={loading}>
+                {loading ? "Saving…" : payType === "payout" ? "SAVE" : "PAY"}
+              </button>
+            </div>
+          </div>
+
           <div className="pillRow">
             {CATEGORIES.map((c) => (
               <button
@@ -363,30 +431,6 @@ export default function SalesPage() {
           </div>
 
           <div className="divider" />
-
-          <div className="pillRow" style={{ marginTop: 8 }}>
-            <button
-              className={`pill ${payType === "cash" ? "active" : ""}`}
-              onClick={() => setPayType("cash")}
-              type="button"
-            >
-              Cash (+)
-            </button>
-            <button
-              className={`pill ${payType === "debt" ? "active" : ""}`}
-              onClick={() => setPayType("debt")}
-              type="button"
-            >
-              Debt
-            </button>
-            <button
-              className={`pill ${payType === "payout" ? "active" : ""}`}
-              onClick={() => setPayType("payout")}
-              type="button"
-            >
-              Payout (-)
-            </button>
-          </div>
 
           {payType === "payout" ? (
             <div style={{ marginTop: 14 }}>
@@ -506,6 +550,19 @@ export default function SalesPage() {
                       onChange={(e) => setCustomerPhone(e.target.value)}
                     />
                   </div>
+
+                  <div className="row" style={{ marginTop: 10 }}>
+                    <label className="label">Due date & time</label>
+                    <input
+                      className="input"
+                      type="datetime-local"
+                      value={dueAt}
+                      onChange={(e) => setDueAt(e.target.value)}
+                    />
+                    <div className="muted" style={{ marginTop: 6 }}>
+                      When due time arrives, you can send WhatsApp. (Auto push requires push setup.)
+                    </div>
+                  </div>
                 </div>
               ) : null}
 
@@ -519,14 +576,8 @@ export default function SalesPage() {
                 />
               </div>
 
-              <div className="payBar">
-                <div>
-                  <div className="muted">TOTAL</div>
-                  <div className="big">{money(total)}</div>
-                </div>
-                <button className="btn primary" type="button" onClick={onPay} disabled={loading}>
-                  {loading ? "Saving..." : "PAY"}
-                </button>
+              <div className="muted" style={{ marginTop: 10, fontWeight: 800 }}>
+                Tip: Edit price directly in cart before Pay.
               </div>
             </>
           )}
@@ -543,14 +594,8 @@ export default function SalesPage() {
                 />
               </div>
 
-              <div className="payBar">
-                <div>
-                  <div className="muted">PAYOUT</div>
-                  <div className="big">{money(Number(payoutAmount || 0))}</div>
-                </div>
-                <button className="btn primary" type="button" onClick={onPay} disabled={loading}>
-                  {loading ? "Saving..." : "SAVE PAYOUT"}
-                </button>
+              <div className="muted" style={{ marginTop: 10, fontWeight: 800 }}>
+                Payout will reduce cash balance.
               </div>
             </>
           ) : null}
@@ -604,13 +649,15 @@ export default function SalesPage() {
         .label { display:block; font-size: 12px; color: rgba(255,255,255,0.65); margin-bottom: 6px; }
         .input { width: 100%; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); color: white; }
         .btn { padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.06); color: white; cursor: pointer; }
-        .btn.primary { background: linear-gradient(90deg, rgba(59,130,246,0.9), rgba(37,99,235,0.9)); border-color: rgba(59,130,246,0.35); }
+        .btn.primary { background: linear-gradient(90deg, rgba(246,196,83,0.95), rgba(212,161,42,0.95)); border-color: rgba(246,196,83,0.35); color: #1a1306; }
         .btn.danger { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.35); }
         .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .link { background: transparent; border: none; color: rgba(147,197,253,1); cursor: pointer; }
+        .link { background: transparent; border: none; color: rgba(246,196,83,1); cursor: pointer; font-weight: 900; }
         .pillRow { display:flex; flex-wrap: wrap; gap: 10px; }
         .pill { padding: 10px 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.04); color: white; cursor:pointer; }
-        .pill.active { background: rgba(59,130,246,0.18); border-color: rgba(59,130,246,0.35); }
+        .pill.active { background: rgba(246,196,83,0.14); border-color: rgba(246,196,83,0.35); }
+        .payTop { display:flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; padding: 12px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.10); background: rgba(0,0,0,0.18); }
+        .payTopRight { display:flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
         .pillSub { margin-left: 8px; opacity: 0.65; font-size: 12px; }
         .muted { color: rgba(255,255,255,0.55); font-size: 13px; }
         .big { font-size: 20px; font-weight: 700; }

@@ -1,0 +1,18 @@
+[33m1588b59[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m add vapid function
+[33m129e908[m add vapid function
+[33maac1afb[m restore sales page
+[33mf13de38[m fix push notifications
+[33mf90ab2e[m add vapid key
+[33mfc9b368[m fix register build crash
+[33m2c0bb48[m fix register route build error
+[33m0f587b8[m fix firebase admin env
+[33m2d561bb[m fix tsconfig
+[33m55d62b5[m fix missing lib files
+[33md6c91ab[m add nodejs runtime for push notifications
+[33mdc39d58[m add push notifications
+[33m024b123[m add firebase-admin
+[33m251828b[m fix next config export
+[33m96f8a01[m fix duplicate config
+[33mbaedf3d[m redirect / to /sales
+[33m03fe44a[m add gitignore
+[33mc70cf52[m first upload

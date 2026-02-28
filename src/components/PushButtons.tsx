@@ -1,68 +1,107 @@
 "use client";
 
 import { useState } from "react";
-import { getFcmToken } from "@/lib/firebase";
 
-export default function PushButtons() {
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+export default function PushButtons({ compact }: { compact?: boolean }) {
   const [status, setStatus] = useState<string>("");
+  const [loading, setLoading] = useState(false);
 
-  async function enable() {
+  const enable = async () => {
     try {
-      setStatus("Requesting permission...");
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") {
-        setStatus("Permission denied");
-        alert("Permission denied");
+      setLoading(true);
+      setStatus("");
+
+      if (typeof window === "undefined") return;
+      if (!("serviceWorker" in navigator)) {
+        setStatus("Service Worker not supported");
+        return;
+      }
+      if (!("PushManager" in window)) {
+        setStatus("Push not supported on this browser");
         return;
       }
 
-      setStatus("Getting token...");
-      const token = await getFcmToken();
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setStatus("Permission denied");
+        return;
+      }
 
-      setStatus("Registering token...");
+      const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!publicKey) {
+        setStatus("Missing NEXT_PUBLIC_VAPID_PUBLIC_KEY");
+        return;
+      }
+
+      const reg = await navigator.serviceWorker.register("/push-sw.js");
+
+      const subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+
       const res = await fetch("/api/push/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ subscription }),
       });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Register failed");
 
-      setStatus("Enabled ✅");
-      alert("Notifications enabled ✅");
+      if (!res.ok) {
+        const t = await res.text();
+        setStatus(`Register failed (${res.status}): ${t}`);
+        return;
+      }
+
+      setStatus("Notifications enabled ✅");
     } catch (e: any) {
-      setStatus("Error: " + (e?.message ?? "unknown"));
-      alert("Enable failed: " + (e?.message ?? "unknown"));
+      setStatus(e?.message ?? "Enable failed");
+    } finally {
+      setLoading(false);
     }
-  }
+  };
 
-  async function sendTest() {
+  const test = async () => {
     try {
-      setStatus("Sending test...");
+      setLoading(true);
+      setStatus("");
       const res = await fetch("/api/push/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "Mokhtar Cell", body: "Test notification ✅" }),
       });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Send failed");
-      setStatus("Sent ✅");
-      alert("Test sent 🚀");
+      if (!res.ok) {
+        const t = await res.text();
+        setStatus(`Test failed (${res.status}): ${t}`);
+        return;
+      }
+      setStatus("Test sent ✅");
     } catch (e: any) {
-      setStatus("Error: " + (e?.message ?? "unknown"));
-      alert("Send failed: " + (e?.message ?? "unknown"));
+      setStatus(e?.message ?? "Test failed");
+    } finally {
+      setLoading(false);
     }
-  }
+  };
 
   return (
-    <div style={{ display: "flex", gap: 10, alignItems: "center", margin: "10px 0" }}>
-      <button className="pill" type="button" onClick={enable}>
-        Enable Notifications
-      </button>
-      <button className="pill" type="button" onClick={sendTest}>
-        Send Test
-      </button>
-      <span style={{ opacity: 0.8, fontSize: 12 }}>{status}</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <button className={compact ? "pill" : "btn primary"} onClick={enable} disabled={loading}>
+          Enable notifications
+        </button>
+        <button className={compact ? "pill" : "btn"} onClick={test} disabled={loading}>
+          Test
+        </button>
+      </div>
+      {status ? <div className="muted" style={{ fontWeight: 800 }}>{status}</div> : null}
     </div>
   );
 }

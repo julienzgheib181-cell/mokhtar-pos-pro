@@ -24,7 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <div className="logo" aria-hidden="true" />
               <div>
                 <div style={{fontSize:14}}>Mokhtar Cell</div>
-                <div className="muted" style={{fontSize:12, marginTop:2}}>POS Pro • Blue</div>
+                <div className="muted" style={{fontSize:12, marginTop:2}}>POS Pro • Gold</div>
               </div>
             </div>
             <div className="nav">

@@ -131,26 +131,14 @@ export default function RemindersPage() {
             </div>
 
             <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-               <button className="pill" onClick={() => copyText(wa)} disabled={!wa}>
+              <button className="pill" onClick={() => copyText(wa)} disabled={!wa}>
                 Copy WhatsApp
-             </button>
-             <button
-  className="btn"
-  onClick={() => {
-    let p = (d.customer_phone || "").replace(/\D/g, "");
-    if (p.startsWith("0")) p = "961" + p.slice(1);
-
-    const msg = encodeURIComponent(
-  d.whatsapp_text ||
-  `مرحبا ${d.customer_name} 👋\n\nمعك Mokhtar Cell 📱\n\nعليك مبلغ $${d.amount} مستحق بتاريخ ${d.due_date || "-"}.\n\nفيك تمر لعنا أو تبعت المبلغ بأقرب وقت 🙏\n\nشكراً لإلك ❤️`
-);
-
-    const url = `https://wa.me/${p}?text=${msg}`;
-window.open(url, "_blank");
-  }}
->
-  Open WhatsApp
-</button>
+              </button>
+              {wa && (
+                <a className="pill" href={buildWhatsAppLink(d.customer_phone, wa)} target="_blank" rel="noreferrer">
+                  Open WhatsApp
+                </a>
+              )}
               {d.status === "pending" && (
                 <button className="btn" onClick={() => markPaid(d.id)}>
                   Mark PAID

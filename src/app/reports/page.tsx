@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabaseClient";
 
 type SaleRow = {
   id: string;
@@ -38,6 +38,17 @@ function startOfMonthISO() {
   d.setDate(1);
   d.setHours(0, 0, 0, 0);
   return d.toISOString();
+}
+
+function fmtDateTime(d?: string | null) {
+  if (!d) return "-";
+  const dt = new Date(d);
+  const day = String(dt.getDate()).padStart(2, "0");
+  const mon = String(dt.getMonth() + 1).padStart(2, "0");
+  const yr = dt.getFullYear();
+  const hh = String(dt.getHours()).padStart(2, "0");
+  const mm = String(dt.getMinutes()).padStart(2, "0");
+  return `${day}/${mon}/${yr} ${hh}:${mm}`;
 }
 
 export default function ReportsPage() {
@@ -190,7 +201,7 @@ export default function ReportsPage() {
                   {s.category} • {s.pay_type.toUpperCase()}
                 </div>
                 <div className="saleSub">
-                  {new Date(s.created_at).toLocaleString()} • balance after: <b>{money(running.get(s.id) ?? 0)}</b>
+                  {fmtDateTime(s.created_at)} • balance after: <b>{money(running.get(s.id) ?? 0)}</b>
                 </div>
               </div>
               <div className="big">{money(s.amount)}</div>
