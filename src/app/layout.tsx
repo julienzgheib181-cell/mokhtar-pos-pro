@@ -1,3 +1,4 @@
+import PushInit from "@/components/PushInit";
 import "./../styles/globals.css";
 import Link from "next/link";
 
@@ -18,6 +19,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
+        <PushInit />
+        {children}
         <div className="topbar">
           <div className="container" style={{display:"flex", alignItems:"center", gap:14}}>
             <div className="brand">
