@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import PushButtons from "@/components/PushButtons";
 import { notify } from "@/lib/notify";
-import PushInit from "@/src/components/PushInit";
+import PushInit from "@/components/PushInit";
 
 const CATEGORIES = [
   "Phones",
