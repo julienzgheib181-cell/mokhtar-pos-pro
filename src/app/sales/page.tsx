@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import PushButtons from "@/components/PushButtons";
 import { notify } from "@/lib/notify";
-import PushInit from "@/components/PushInit";
+import PushInit from "@/src/components/PushInit";
 
 const CATEGORIES = [
   "Phones",
@@ -37,9 +37,9 @@ type SaleRow = {
 const LS_CATALOG_KEY = "mokhtar_pos_catalog_v1";
 
 function money(n: number) {
-  return `$${(Number.isFinite(n) ? n : 0).toFixed(2)}`;
+  return  `$${(Number.isFinite(n) ? n : 0).toFixed(2)}`;
 }
-<PushInit />
+
 function defaultCatalog(): Catalog {
   return {
     Phones: [],
@@ -358,6 +358,8 @@ export default function SalesPage() {
   }
 
   return (
+    <>
+  <PushInit />
     <div className="page">
       <div className="header">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
@@ -630,7 +632,8 @@ export default function SalesPage() {
           </div>
         </div>
       </div>
-
+    
+      
       {isManageOpen ? (
         <ManageModal
           category={category}
@@ -639,7 +642,7 @@ export default function SalesPage() {
           onSave={saveManage}
         />
       ) : null}
-
+      </div>  / 
       <style jsx>{`
         .grid { display: grid; gap: 14px; }
         .grid.two { grid-template-columns: 1.2fr 0.8fr; }
@@ -677,7 +680,8 @@ export default function SalesPage() {
         .saleRight { display:flex; flex-direction: column; align-items:flex-end; gap: 8px; }
         .toast.error { margin: 10px 0; padding: 10px 12px; border-radius: 14px; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35); }
       `}</style>
-    </div>
+   
+    </>
   );
 }
 
@@ -796,5 +800,6 @@ function ManageModal({
         .muted { color: rgba(255,255,255,0.55); font-size: 13px; }
       `}</style>
     </div>
+  
   );
 }
