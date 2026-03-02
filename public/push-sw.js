@@ -5,3 +5,4 @@ self.addEventListener("push", function (event) {
     body: data.body || "New update",
   });
 });
+navigator.serviceWorker.register("/push-sw.js")

@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import PushButtons from "@/components/PushButtons";
 import { notify } from "@/lib/notify";
+import PushInit from "@/components/PushInit";
 
 const CATEGORIES = [
   "Phones",
@@ -34,18 +35,11 @@ type SaleRow = {
 };
 
 const LS_CATALOG_KEY = "mokhtar_pos_catalog_v1";
-useEffect(() => {
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker
-      .register("/push-sw.js")
-      .then(() => console.log("Service Worker Registered"))
-      .catch((err) => console.error("SW error", err));
-  }
-}, []);
+
 function money(n: number) {
   return `$${(Number.isFinite(n) ? n : 0).toFixed(2)}`;
 }
-
+<PushInit />
 function defaultCatalog(): Catalog {
   return {
     Phones: [],
