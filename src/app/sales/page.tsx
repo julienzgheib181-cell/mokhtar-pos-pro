@@ -34,7 +34,14 @@ type SaleRow = {
 };
 
 const LS_CATALOG_KEY = "mokhtar_pos_catalog_v1";
-
+useEffect(() => {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker
+      .register("/push-sw.js")
+      .then(() => console.log("Service Worker Registered"))
+      .catch((err) => console.error("SW error", err));
+  }
+}, []);
 function money(n: number) {
   return `$${(Number.isFinite(n) ? n : 0).toFixed(2)}`;
 }
