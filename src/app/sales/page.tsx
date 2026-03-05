@@ -1042,9 +1042,11 @@ function ManageModal({
           <button className="btn" type="button" onClick={addRow}>
             Add item
           </button>
-          <button className="btn primary" type="button" onClick={}>
+       <button className="btn primary" type="button" onClick={save}>
+  Save
+</button>
             
-          </button>
+          
         </div>
       </div>
 
