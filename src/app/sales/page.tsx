@@ -998,7 +998,7 @@ function ManageModal({
  function save() {
   onSave(
     rows
-      .map((x) => ({ name: x.name.trim(), price: Number(x.price || 0) }))
+      .map((x) => ({ name: x.name.trim(), price: Number(x.price || 0) })
       .filter((x) => x.name.length > 0)
   );
 }
