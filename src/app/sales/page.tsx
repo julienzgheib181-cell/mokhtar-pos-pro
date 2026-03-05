@@ -34,6 +34,17 @@ type SaleRow = {
   items: any;
   deleted_at?: string | null;
 };
+type WishRow = {
+  id: string;
+  created_at: string;
+  type: "transfer" | "receive";
+  currency: "USD" | "LBP";
+  amount: number;
+  note: string | null;
+  counted?: boolean | null;
+};
+
+const [wishLatest, setWishLatest] = useState<WishRow[]>([]);
 
 const LS_CATALOG_KEY = "mokhtar_pos_catalog_v1";
 
@@ -134,6 +145,12 @@ export default function SalesPage() {
   const [wishAmount, setWishAmount] = useState<string>("");
   const [wishUsdBalance, setWishUsdBalance] = useState<number>(0);
   const [wishLbpBalance, setWishLbpBalance] = useState<number>(0);
+  useEffect(() => {
+  refreshLatest();
+  refreshWishBalances();
+  refreshWishLatest();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   useEffect(() => {
     setCatalog(loadCatalog());
@@ -231,7 +248,7 @@ export default function SalesPage() {
       setNote("");
       await refreshWishBalances();
     } catch (e: any) {
-      setErr(e?.message ?? "Wish save failed");
+      setErr(e?.message ?? "Wish  failed");
     } finally {
       setLoading(false);
     }
@@ -262,6 +279,15 @@ export default function SalesPage() {
       // ignore metrics failures
     }
   }
+  async function refreshWishLatest() {
+  const { data, error } = await supabase
+    .from("wish_transactions")
+    .select("id,created_at,type,currency,amount,note,counted")
+    .order("created_at", { ascending: false })
+    .limit(25);
+
+  if (!error) setWishLatest((data ?? []) as any);
+}
 
   async function refreshLatest() {
     const { data, error } = await supabase
@@ -280,10 +306,11 @@ export default function SalesPage() {
   }
 
   useEffect(() => {
-    refreshLatest();
-    refreshWishBalances();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  refreshLatest();
+  refreshWishBalances();
+  refreshWishLatest();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   function addToCart(name: string, price: number) {
     setCart((prev) => {
@@ -445,7 +472,7 @@ export default function SalesPage() {
       setDueAt("");
       await refreshLatest();
     } catch (e: any) {
-      setErr(e?.message ?? "Save failed");
+      setErr(e?.message ?? " failed");
     } finally {
       setLoading(false);
     }
@@ -577,7 +604,7 @@ export default function SalesPage() {
                     {payType === "payout" ? money(Number(payoutAmount || 0)) : money(total)}
                   </div>
                   <button className="btn primary" type="button" onClick={onPay} disabled={loading}>
-                    {loading ? "Saving…" : payType === "payout" ? "SAVE" : "PAY"}
+                    {loading ? "Saving…" : payType === "payout" ? "" : "PAY"}
                   </button>
                 </div>
               ) : (
@@ -587,7 +614,7 @@ export default function SalesPage() {
                     {wishCurrency === "USD" ? `$${Number(wishUsdBalance || 0).toFixed(2)}` : `${Number(wishLbpBalance || 0).toLocaleString()} LBP`}
                   </div>
                   <button className="btn primary" type="button" onClick={saveWish} disabled={loading}>
-                    {loading ? "Saving…" : "SAVE WISH"}
+                    {loading ? "Saving…" : " WISH"}
                   </button>
                 </div>
               )}
@@ -627,7 +654,7 @@ export default function SalesPage() {
 
                   <div className="card">
                     <div className="muted">Quick Action</div>
-                    <div className="tiny">Save transfer / receive</div>
+                    <div className="tiny"> transfer / receive</div>
                   </div>
                 </div>
 
@@ -674,6 +701,36 @@ export default function SalesPage() {
                 <div className="muted" style={{ marginTop: 10, fontWeight: 800 }}>
                   Tip: Transfer يزيد • Receive ينقص — والـ Cash totals ما بيتأثروا.
                 </div>
+                <div className="divider" />
+
+<div className="sectionTitle" style={{ marginTop: 6 }}>Wish History</div>
+<div className="muted">آخر عمليات Transfer / Receive</div>
+
+<div style={{ marginTop: 10 }}>
+  {wishLatest.length === 0 ? <div className="muted">No wish transactions yet.</div> : null}
+
+  {wishLatest.map((w) => (
+    <div key={w.id} className="saleRow">
+      <div>
+        <div className="saleTitle">
+          {w.type === "transfer" ? "Transfer (+)" : "Receive (-)"} • {w.currency}
+          {w.type === "receive" && w.counted ? " • COUNTED ✔" : ""}
+        </div>
+        <div className="saleSub">
+          {new Date(w.created_at).toLocaleString()}
+          {w.note ? ` • ${w.note}` : ""}
+        </div>
+      </div>
+      <div className="saleRight">
+        <div className="big">
+          {w.currency === "USD"
+            ? `$${Number(w.amount).toFixed(2)}`
+            : `${Number(w.amount).toLocaleString()} LBP`}
+        </div>
+      </div>
+    </div>
+  ))}
+</div>
               </>
             ) : (
               <>
@@ -938,7 +995,7 @@ function ManageModal({
     setRows((prev) => prev.filter((_, idx) => idx !== i));
   }
 
-  function save() {
+  function () {
     onSave(
       rows
         .map((x) => ({ name: x.name.trim(), price: Number(x.price || 0) }))
@@ -986,8 +1043,8 @@ function ManageModal({
           <button className="btn" type="button" onClick={addRow}>
             Add item
           </button>
-          <button className="btn primary" type="button" onClick={save}>
-            Save
+          <button className="btn primary" type="button" onClick={}>
+            
           </button>
         </div>
       </div>
