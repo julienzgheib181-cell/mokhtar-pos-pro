@@ -871,7 +871,8 @@ export default function SalesPage() {
         .grid { display: grid; gap: 14px; }
         .grid.two { grid-template-columns: 1.2fr 0.8fr; }
         .grid.three { grid-template-columns: 1.4fr 0.8fr 0.6fr; }
-        .grid.metrics { grid-template-columns: repeat(3, 1fr); }
+       .grid.metrics { grid-template-columns: repeat(5, 1fr); }
+@media (max-width: 980px) { .grid.metrics { grid-template-columns: repeat(2, 1fr); } }
         .divider { height: 1px; background: rgba(255,255,255,0.08); margin: 14px 0; }
         .row { margin-top: 10px; }
         .label { display:block; font-size: 12px; color: rgba(255,255,255,0.65); margin-bottom: 6px; }
