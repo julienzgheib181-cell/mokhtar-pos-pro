@@ -328,6 +328,24 @@ if (payType === "debt") notify("Debt (new)", `${customerName.trim()} • ${custo
           due_date: dueDate,
         });
         if (debtErr) throw debtErr;
+        // Open WhatsApp directly (ready message)
+const waPhone = normalizePhone(customerPhone.trim());
+if (waPhone) {
+  const waMsg =
+    `مرحبا ${customerName.trim()} 👋\n` +
+    `تذكير بالدفع - Mokhtar Cell\n` +
+    `المبلغ: ${money(amount)}\n` +
+    (dueAt ? `الموعد: ${new Date(dueAt).toLocaleString()}\n` : "") +
+    (note.trim() ? `ملاحظة: ${note.trim()}\n` : "") +
+    `\n---\n` +
+    `Hi ${customerName.trim()} 👋\n` +
+    `Payment reminder - Mokhtar Cell\n` +
+    `Amount: ${money(amount)}\n` +
+    (dueAt ? `Due: ${new Date(dueAt).toLocaleString()}\n` : "") +
+    (note.trim() ? `Note: ${note.trim()}\n` : "");
+
+  window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`, "_blank");
+}
       }
 
       // Extra context notification for Wish Money (transfer/receive)
