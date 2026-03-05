@@ -596,6 +596,100 @@ async function saveWish() {
             </div>
 
             <div className="divider" />
+            {category === "Wish Money" ? (
+  <>
+    <div className="sectionTitle" style={{ marginTop: 6 }}>Wish Money</div>
+    <div className="muted">Transfer يزيد • Receive ينقص • USD/LBP لحال الـ Wish</div>
+
+    <div className="grid metrics" style={{ marginTop: 12 }}>
+      <div className="card">
+        <div className="muted">Wish Balance (USD)</div>
+        <div className="big">${Number(wishUsdBalance || 0).toFixed(2)}</div>
+      </div>
+      <div className="card">
+        <div className="muted">Wish Balance (LBP)</div>
+        <div className="big">{Number(wishLbpBalance || 0).toLocaleString()} LBP</div>
+      </div>
+      <div className="card">
+        <div className="muted">Quick</div>
+        <div className="tiny">Save any transfer/receive</div>
+      </div>
+    </div>
+
+    <div className="divider" />
+
+    <div className="payTop" style={{ marginTop: 0 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button
+          className={`pill ${wishType === "transfer" ? "active" : ""}`}
+          type="button"
+          onClick={() => setWishType("transfer")}
+        >
+          Transfer (+)
+        </button>
+        <button
+          className={`pill ${wishType === "receive" ? "active" : ""}`}
+          type="button"
+          onClick={() => setWishType("receive")}
+        >
+          Receive (-)
+        </button>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <button
+          className={`pill ${wishCurrency === "USD" ? "active" : ""}`}
+          type="button"
+          onClick={() => setWishCurrency("USD")}
+        >
+          USD
+        </button>
+        <button
+          className={`pill ${wishCurrency === "LBP" ? "active" : ""}`}
+          type="button"
+          onClick={() => setWishCurrency("LBP")}
+        >
+          LBP
+        </button>
+      </div>
+    </div>
+
+    <div className="row" style={{ marginTop: 12 }}>
+      <label className="label">Amount ({wishCurrency})</label>
+      <input
+        className="input"
+        value={wishAmount}
+        onChange={(e) => setWishAmount(e.target.value)}
+        placeholder={wishCurrency === "USD" ? "e.g. 50" : "e.g. 1500000"}
+      />
+    </div>
+
+    <div className="row" style={{ marginTop: 10 }}>
+      <label className="label">Note (transfer / received / details)</label>
+      <input
+        className="input"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Optional"
+      />
+    </div>
+
+    <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+      <button className="btn primary" type="button" onClick={saveWish} disabled={loading}>
+        {loading ? "Saving…" : "SAVE WISH"}
+      </button>
+    </div>
+
+    <div className="muted" style={{ marginTop: 10 }}>
+      Transfer (+) بيزيد الرصيد • Receive (-) بينقص الرصيد
+    </div>
+  </>
+) : (
+  // ✅ هون خليك مخلّي الـ POS العادي متل ما هو (cart / payout / debt)
+  <>
+    {/* ...الكود القديم تبع POS (cart وغيره) خليه متل ما هو... */}
+  </>
+)}
 
             {payType === "payout" ? (
               <div style={{ marginTop: 14 }}>
