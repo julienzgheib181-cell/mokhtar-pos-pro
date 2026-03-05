@@ -642,7 +642,7 @@ export default function SalesPage() {
           onSave={saveManage}
         />
       ) : null}
-      </div>  / 
+      </div>   
       <style jsx>{`
         .grid { display: grid; gap: 14px; }
         .grid.two { grid-template-columns: 1.2fr 0.8fr; }
