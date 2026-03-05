@@ -995,14 +995,13 @@ function ManageModal({
     setRows((prev) => prev.filter((_, idx) => idx !== i));
   }
 
-  function () {
-    onSave(
-      rows
-        .map((x) => ({ name: x.name.trim(), price: Number(x.price || 0) }))
-        .filter((x) => x.name.length > 0)
-    );
-  }
-
+ function save() {
+  onSave(
+    rows
+      .map((x) => ({ name: x.name.trim(), price: Number(x.price || 0) }))
+      .filter((x) => x.name.length > 0)
+  );
+}
   return (
     <div className="modalWrap" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
