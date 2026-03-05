@@ -192,6 +192,18 @@ export default function DebtsPage() {function openWhatsApp(phone: string | null,
                               className="rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-black hover:brightness-110"
                             >
                               Mark paid
+                              <button
+  type="button"
+  onClick={() =>
+    openWhatsApp(
+      d.customer_phone,
+      `مرحبا ${d.customer_name}، تذكير بالدفع 💛\nالمبلغ: $${Number(d.amount).toFixed(2)}\nتاريخ الاستحقاق: ${d.due_at ? fmtDateTime(d.due_at) : (d.due_date ? fmtDate(d.due_date) : "-")}\n\nHello ${d.customer_name}, payment reminder 💛\nAmount: $${Number(d.amount).toFixed(2)}\nDue: ${d.due_at ? fmtDateTime(d.due_at) : (d.due_date ? fmtDate(d.due_date) : "-")}`
+    )
+  }
+  className="ml-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80 hover:bg-white/10"
+>
+  WhatsApp
+</button>
                             </button>
                           ) : (
                             <span className="text-xs text-white/60">Paid {d.paid_at ? fmtDateTime(d.paid_at) : ''}</span>
