@@ -515,20 +515,34 @@ export default function SalesPage() {
         </div>
 
         <div className="grid metrics" style={{ marginTop: 14 }}>
-          <div className="card">
-            <div className="muted">Cash balance</div>
-            <div className="big">{money(cashBalance)}</div>
-            <div className="tiny">cash in − payout</div>
-          </div>
-          <div className="card">
-            <div className="muted">Cash in (today)</div>
-            <div className="big">{money(cashInToday)}</div>
-          </div>
-          <div className="card">
-            <div className="muted">Cash out (today)</div>
-            <div className="big">{money(cashOutToday)}</div>
-          </div>
-        </div>
+  <div className="card">
+    <div className="muted">Wish Balance (USD)</div>
+    <div className="big">${Number(wishUsdBalance || 0).toFixed(2)}</div>
+  </div>
+
+  <div className="card">
+    <div className="muted">Wish Balance (LBP)</div>
+    <div className="big">{Number(wishLbpBalance || 0).toLocaleString()} LBP</div>
+  </div>
+
+  <div className="card">
+    <div className="muted">Wish System (USD)</div>
+    <div className="big">${Number(wishSystemUsd || 0).toFixed(2)}</div>
+    <div className="tiny">Receive ✔ counted</div>
+  </div>
+
+  <div className="card">
+    <div className="muted">Cash balance</div>
+    <div className="big">{money(cashBalance)}</div>
+    <div className="tiny">cash in − payout</div>
+  </div>
+
+  <div className="card">
+    <div className="muted">Cash in/out (today)</div>
+    <div className="big">{money(cashInToday - cashOutToday)}</div>
+    <div className="tiny">today net</div>
+  </div>
+</div>
 
         {err ? <div className="toast error">{err}</div> : null}
 
