@@ -39,6 +39,13 @@ const LS_CATALOG_KEY = "mokhtar_pos_catalog_v1";
 function money(n: number) {
   return  `$${(Number.isFinite(n) ? n : 0).toFixed(2)}`;
 }
+function normalizePhone(p: string) {
+  const digits = p.replace(/[^\d+]/g, "");
+  if (digits.startsWith("0")) return "961" + digits.slice(1);
+  if (digits.startsWith("+")) return digits.slice(1);
+  return digits;
+}
+export default function SalesPage() {
 
 function defaultCatalog(): Catalog {
   return {
