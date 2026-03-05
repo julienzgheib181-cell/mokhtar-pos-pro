@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import PushButtons from "@/components/PushButtons";
 import { notify } from "@/lib/notify";
 import PushInit from "@/components/PushInit";
 
+export const dynamic = "force-dynamic";
 /** POS categories (Wish is NOT here) */
 const CATEGORIES = [
   "Phones",
