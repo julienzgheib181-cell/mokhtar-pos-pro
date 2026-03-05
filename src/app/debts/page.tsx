@@ -41,7 +41,17 @@ function clsx(...v: Array<string | false | null | undefined>) {
   return v.filter(Boolean).join(' ');
 }
 
-export default function DebtsPage() {
+export default function DebtsPage() {function openWhatsApp(phone: string | null, message: string) {
+  if (!phone) return;
+
+  // تنظيف الرقم (بيشيل spaces و + و -)
+  const digits = phone.replace(/[^\d]/g, "");
+  // إذا رقم لبنان وما بلّش 961، منضيفه (اختياري)
+  const normalized = digits.startsWith("961") ? digits : `961${digits.replace(/^0/, "")}`;
+
+  const url = `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
+  window.open(url, "_blank");
+}
   const [rows, setRows] = useState<DebtRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
