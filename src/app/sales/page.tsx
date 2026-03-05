@@ -107,6 +107,8 @@ function saveCatalog(catalog: Catalog) {
 }
 
 export default function SalesPage() {
+  const [wishSystemUsd, setWishSystemUsd] = useState<number>(0);
+const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
   const [category, setCategory] = useState<Category>("Phones");
   const [payType, setPayType] = useState<PayType>("cash");
 
