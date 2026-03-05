@@ -133,9 +133,6 @@ const [wishCurrency, setWishCurrency] = useState<"USD" | "LBP">("USD");
 const [wishAmount, setWishAmount] = useState<string>("");
 const [wishUsdBalance, setWishUsdBalance] = useState<number>(0);
 const [wishLbpBalance, setWishLbpBalance] = useState<number>(0);
-  const [wishType, setWishType] = useState<"transfer" | "receive">("transfer");
-const [wishCurrency, setWishCurrency] = useState<"USD" | "LBP">("USD");
-const [wishAmount, setWishAmount] = useState<string>("");
 
 // خيار الـ receive
 const [wishCountAsReceived, setWishCountAsReceived] = useState(true);
