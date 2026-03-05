@@ -324,14 +324,14 @@ if (payType === "debt") notify("Debt (new)", `${customerName.trim()} • ${custo
       }
 
       // Extra context notification for Wish Money (transfer/receive)
-      const isWish = String(category).toLowerCase().includes("wish");
-      if (isWish) {
-        const label =
-          itemsPayload.find((x) => String(x.name).toLowerCase().includes("transfer"))?.name ||
-          itemsPayload.find((x) => String(x.name).toLowerCase().includes("receive"))?.name ||
-          "Wish Money";
-        notify("Wish Money", `${label} • ${money(amount)}${note.trim() ? ` • ${note.trim()}` : ""}`);
-      }
+const isWishCategory = String(category).toLowerCase().includes("wish");
+if (isWishCategory) {
+  const hasTransfer = itemsPayload.some((x) => String(x.name).toLowerCase().includes("transfer"));
+  const hasReceive = itemsPayload.some((x) => String(x.name).toLowerCase().includes("receive"));
+  const wishLabel = hasTransfer ? "Wish Transfer" : hasReceive ? "Wish Receive" : "Wish";
+
+  notify(wishLabel, baseLine);
+}
 
       // reset
       setCart([]);
