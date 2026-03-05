@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { notify } from '@/lib/notify';
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { notify } from "@/lib/notify";
 
 type DebtRow = {
   id: string;
@@ -11,63 +11,76 @@ type DebtRow = {
   customer_phone: string | null;
   amount: number;
   due_date: string | null;
-  status: 'pending' | 'paid' | string;
+  status: "pending" | "paid" | string;
   paid_at: string | null;
   paid_amount: number | null;
   due_at?: string | null;
 };
 
 function fmtDate(d?: string | null) {
-  if (!d) return '-';
+  if (!d) return "-";
   const dt = new Date(d);
-  const day = String(dt.getDate()).padStart(2, '0');
-  const mon = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, "0");
+  const mon = String(dt.getMonth() + 1).padStart(2, "0");
   const yr = dt.getFullYear();
   return `${day}/${mon}/${yr}`;
 }
 
 function fmtDateTime(d?: string | null) {
-  if (!d) return '-';
+  if (!d) return "-";
   const dt = new Date(d);
-  const day = String(dt.getDate()).padStart(2, '0');
-  const mon = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, "0");
+  const mon = String(dt.getMonth() + 1).padStart(2, "0");
   const yr = dt.getFullYear();
-  const hh = String(dt.getHours()).padStart(2, '0');
-  const mm = String(dt.getMinutes()).padStart(2, '0');
+  const hh = String(dt.getHours()).padStart(2, "0");
+  const mm = String(dt.getMinutes()).padStart(2, "0");
   return `${day}/${mon}/${yr} ${hh}:${mm}`;
 }
 
 function clsx(...v: Array<string | false | null | undefined>) {
-  return v.filter(Boolean).join(' ');
+  return v.filter(Boolean).join(" ");
 }
 
-export default function DebtsPage() {function openWhatsApp(phone: string | null, message: string) {
-  if (!phone) return;
-
-  // تنظيف الرقم (بيشيل spaces و + و -)
+function normalizePhone(phone: string | null) {
+  if (!phone) return "";
   const digits = phone.replace(/[^\d]/g, "");
-  // إذا رقم لبنان وما بلّش 961، منضيفه (اختياري)
-  const normalized = digits.startsWith("961") ? digits : `961${digits.replace(/^0/, "")}`;
+  if (!digits) return "";
+  // Lebanon: 03xxxxxx -> 9613xxxxxx
+  if (digits.startsWith("0")) return "961" + digits.slice(1);
+  if (digits.startsWith("961")) return digits;
+  return digits;
+}
 
+function openWhatsApp(phone: string | null, message: string) {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return;
   const url = `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
   window.open(url, "_blank");
 }
+
+export default function DebtsPage() {
   const [rows, setRows] = useState<DebtRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const pendingTotal = useMemo(
-    () => rows.filter((r) => r.status === 'pending').reduce((a, r) => a + Number(r.amount || 0), 0),
+    () =>
+      rows
+        .filter((r) => r.status === "pending")
+        .reduce((a, r) => a + Number(r.amount || 0), 0),
     [rows]
   );
 
   async function load() {
     setLoading(true);
     setError(null);
+
     const { data, error } = await supabase
-      .from('debts')
-      .select('id,created_at,customer_name,customer_phone,amount,due_date,due_at,status,paid_at,paid_amount')
-      .order('created_at', { ascending: false });
+      .from("debts")
+      .select(
+        "id,created_at,customer_name,customer_phone,amount,due_date,due_at,status,paid_at,paid_amount"
+      )
+      .order("created_at", { ascending: false });
 
     if (error) {
       setError(error.message);
@@ -84,32 +97,58 @@ export default function DebtsPage() {function openWhatsApp(phone: string | null,
   }, []);
 
   async function markPaid(debt: DebtRow) {
-    const paidAmount = debt.amount;
+    const paidAmount = Number(debt.amount || 0);
     const now = new Date().toISOString();
 
     const { error } = await supabase
-      .from('debts')
-      .update({ status: 'paid', paid_at: now, paid_amount: paidAmount })
-      .eq('id', debt.id);
+      .from("debts")
+      .update({ status: "paid", paid_at: now, paid_amount: paidAmount })
+      .eq("id", debt.id);
 
     if (error) {
       setError(error.message);
       return;
     }
 
-    // Optional: record the payment as a cash sale entry (so it appears in dashboard totals)
-    await supabase.from('sales').insert({
-      category: 'Debt Payment',
+    // record the payment as CASH sale entry (so it appears in dashboard totals)
+    const { error: saleErr } = await supabase.from("sales").insert({
+      category: "Debt Payment",
       amount: paidAmount,
-      pay_type: 'cash',
-      note: `Debt paid: ${debt.customer_name}${debt.customer_phone ? ' (' + debt.customer_phone + ')' : ''}`,
+      pay_type: "cash",
+      note: `Debt paid: ${debt.customer_name}${
+        debt.customer_phone ? " (" + debt.customer_phone + ")" : ""
+      }`,
       items: [],
     });
 
-    // Notify owner
-    notify('Debt paid', `${debt.customer_name} • $${Number(paidAmount).toFixed(2)}`);
+    if (saleErr) {
+      // not fatal, but show it
+      setError(saleErr.message);
+    }
+
+    notify("Debt Paid ✅", `${debt.customer_name} • $${paidAmount.toFixed(2)}`);
 
     await load();
+  }
+
+  function buildReminderMessage(d: DebtRow) {
+    const dueText = d.due_at
+      ? fmtDateTime(d.due_at)
+      : d.due_date
+      ? fmtDate(d.due_date)
+      : "-";
+
+    return (
+      `مرحبا ${d.customer_name} 👋\n` +
+      `تذكير بالدفع - Mokhtar Cell 💛\n` +
+      `المبلغ: $${Number(d.amount).toFixed(2)}\n` +
+      `تاريخ الاستحقاق: ${dueText}\n\n` +
+      `---\n` +
+      `Hi ${d.customer_name} 👋\n` +
+      `Payment reminder - Mokhtar Cell 💛\n` +
+      `Amount: $${Number(d.amount).toFixed(2)}\n` +
+      `Due: ${dueText}`
+    );
   }
 
   return (
@@ -117,11 +156,16 @@ export default function DebtsPage() {function openWhatsApp(phone: string | null,
       <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Debts</h1>
-          <p className="text-sm text-white/60">Track pending & paid customer debts</p>
+          <p className="text-sm text-white/60">
+            Track pending & paid customer debts
+          </p>
         </div>
+
         <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-right">
           <div className="text-xs text-white/60">Pending total</div>
-          <div className="text-2xl font-semibold">${pendingTotal.toFixed(2)}</div>
+          <div className="text-2xl font-semibold">
+            ${pendingTotal.toFixed(2)}
+          </div>
         </div>
       </div>
 
@@ -153,60 +197,101 @@ export default function DebtsPage() {function openWhatsApp(phone: string | null,
               <table className="w-full text-sm">
                 <thead className="text-xs text-white/60">
                   <tr className="border-b border-white/10">
-                    <th className="px-2 py-2 text-left font-semibold">Customer</th>
+                    <th className="px-2 py-2 text-left font-semibold">
+                      Customer
+                    </th>
                     <th className="px-2 py-2 text-left font-semibold">Phone</th>
-                    <th className="px-2 py-2 text-right font-semibold">Amount</th>
-                    <th className="px-2 py-2 text-left font-semibold">Created</th>
+                    <th className="px-2 py-2 text-right font-semibold">
+                      Amount
+                    </th>
+                    <th className="px-2 py-2 text-left font-semibold">
+                      Created
+                    </th>
                     <th className="px-2 py-2 text-left font-semibold">Due</th>
-                    <th className="px-2 py-2 text-left font-semibold">Status</th>
-                    <th className="px-2 py-2 text-right font-semibold">Action</th>
+                    <th className="px-2 py-2 text-left font-semibold">
+                      Status
+                    </th>
+                    <th className="px-2 py-2 text-right font-semibold">
+                      Action
+                    </th>
                   </tr>
                 </thead>
+
                 <tbody>
                   {rows.map((d) => {
-                    const isPending = d.status === 'pending';
+                    const isPending = d.status === "pending";
+                    const dueText = d.due_at
+                      ? fmtDateTime(d.due_at)
+                      : d.due_date
+                      ? fmtDate(d.due_date)
+                      : "-";
+
                     return (
-                      <tr key={d.id} className="border-b border-white/5 hover:bg-white/5">
-                        <td className="px-2 py-2 whitespace-nowrap font-semibold">{d.customer_name}</td>
-                        <td className="px-2 py-2 whitespace-nowrap text-white/80">{d.customer_phone || '-'}</td>
-                        <td className="px-2 py-2 whitespace-nowrap text-right font-semibold">${Number(d.amount).toFixed(2)}</td>
-                        <td className="px-2 py-2 whitespace-nowrap text-white/70">{fmtDateTime(d.created_at)}</td>
-                        <td className="px-2 py-2 whitespace-nowrap text-white/70">{d.due_at ? fmtDateTime(d.due_at) : (d.due_date ? fmtDate(d.due_date) : '-')}</td>
+                      <tr
+                        key={d.id}
+                        className="border-b border-white/5 hover:bg-white/5"
+                      >
+                        <td className="px-2 py-2 whitespace-nowrap font-semibold">
+                          {d.customer_name}
+                        </td>
+
+                        <td className="px-2 py-2 whitespace-nowrap text-white/80">
+                          {d.customer_phone || "-"}
+                        </td>
+
+                        <td className="px-2 py-2 whitespace-nowrap text-right font-semibold">
+                          ${Number(d.amount).toFixed(2)}
+                        </td>
+
+                        <td className="px-2 py-2 whitespace-nowrap text-white/70">
+                          {fmtDateTime(d.created_at)}
+                        </td>
+
+                        <td className="px-2 py-2 whitespace-nowrap text-white/70">
+                          {dueText}
+                        </td>
+
                         <td className="px-2 py-2 whitespace-nowrap">
                           <span
                             className={clsx(
-                              'inline-flex rounded-full border px-2 py-0.5 text-[11px] uppercase',
+                              "inline-flex rounded-full border px-2 py-0.5 text-[11px] uppercase",
                               isPending
-                                ? 'border-amber-400/30 bg-amber-500/10 text-amber-100'
-                                : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-100'
+                                ? "border-amber-400/30 bg-amber-500/10 text-amber-100"
+                                : "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
                             )}
                           >
                             {d.status}
                           </span>
                         </td>
+
                         <td className="px-2 py-2 whitespace-nowrap text-right">
                           {isPending ? (
-                            <button
-                              type="button"
-                              onClick={() => markPaid(d)}
-                              className="rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-black hover:brightness-110"
-                            >
-                              Mark paid
+                            <div className="flex justify-end gap-2">
                               <button
-  type="button"
-  onClick={() =>
-    openWhatsApp(
-      d.customer_phone,
-      `مرحبا ${d.customer_name}، تذكير بالدفع 💛\nالمبلغ: $${Number(d.amount).toFixed(2)}\nتاريخ الاستحقاق: ${d.due_at ? fmtDateTime(d.due_at) : (d.due_date ? fmtDate(d.due_date) : "-")}\n\nHello ${d.customer_name}, payment reminder 💛\nAmount: $${Number(d.amount).toFixed(2)}\nDue: ${d.due_at ? fmtDateTime(d.due_at) : (d.due_date ? fmtDate(d.due_date) : "-")}`
-    )
-  }
-  className="ml-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80 hover:bg-white/10"
->
-  WhatsApp
-</button>
-                            </button>
+                                type="button"
+                                onClick={() => markPaid(d)}
+                                className="rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-black hover:brightness-110"
+                              >
+                                Mark paid
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openWhatsApp(
+                                    d.customer_phone,
+                                    buildReminderMessage(d)
+                                  )
+                                }
+                                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10"
+                              >
+                                WhatsApp
+                              </button>
+                            </div>
                           ) : (
-                            <span className="text-xs text-white/60">Paid {d.paid_at ? fmtDateTime(d.paid_at) : ''}</span>
+                            <span className="text-xs text-white/60">
+                              Paid {d.paid_at ? fmtDateTime(d.paid_at) : ""}
+                            </span>
                           )}
                         </td>
                       </tr>
