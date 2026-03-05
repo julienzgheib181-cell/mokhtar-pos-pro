@@ -126,6 +126,7 @@ export default function SalesPage() {
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [canDelete, setCanDelete] = useState(false);
 
   // ✅ WISH SYSTEM (separate from cash totals)
   const [wishType, setWishType] = useState<"transfer" | "receive">("transfer");
@@ -442,6 +443,18 @@ export default function SalesPage() {
   }
 
   async function softDelete(id: string) {
+    // 1) password gate مرة وحدة
+    if (!canDelete) {
+      const pass = prompt("Enter delete password:");
+      if (pass !== "1234") {
+        alert("Wrong password");
+        return;
+      }
+      setCanDelete(true);
+      sessionStorage.setItem("canDelete", "1");
+    }
+
+    // 2) confirm delete
     const ok = confirm("Delete this sale? (It will be hidden from totals)");
     if (!ok) return;
 
