@@ -277,6 +277,19 @@ export default function SalesPage() {
         .select("id")
         .single();
       if (saleErr) throw saleErr;
+      const itemsText =
+  itemsPayload?.length
+    ? itemsPayload.map((x) => `${x.qty}x ${x.name}`).join(", ")
+    : "";
+
+const baseLine =
+  `${category} • ${money(amount)}` +
+  (itemsText ? ` • ${itemsText}` : "") +
+  (note.trim() ? ` • Note: ${note.trim()}` : "");
+
+// Owner notifications
+if (payType === "cash") notify("Sale (+)", baseLine);
+if (payType === "debt") notify("Debt (new)", `${customerName.trim()} • ${customerPhone.trim()} • ${baseLine}`);
 
       // Notify owner for every sale/debt creation
       if (payType === "cash") {
