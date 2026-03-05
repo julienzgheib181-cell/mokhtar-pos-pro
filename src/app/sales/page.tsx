@@ -37,15 +37,17 @@ type SaleRow = {
 const LS_CATALOG_KEY = "mokhtar_pos_catalog_v1";
 
 function money(n: number) {
-  return  `$${(Number.isFinite(n) ? n : 0).toFixed(2)}`;
+  return `$${(Number.isFinite(n) ? n : 0).toFixed(2)}`;
 }
+
+// Lebanon-friendly normalizer: 03xxxxxx -> 9613xxxxxx
 function normalizePhone(p: string) {
-  const digits = p.replace(/[^\d+]/g, "");
+  const digits = String(p || "").replace(/[^\d]/g, "");
+  if (!digits) return "";
   if (digits.startsWith("0")) return "961" + digits.slice(1);
-  if (digits.startsWith("+")) return digits.slice(1);
+  if (digits.startsWith("961")) return digits;
   return digits;
 }
-export default function SalesPage() {
 
 function defaultCatalog(): Catalog {
   return {
@@ -79,7 +81,10 @@ function loadCatalog(): Catalog {
       const v = parsed?.[k];
       if (Array.isArray(v)) {
         base[k] = v
-          .map((x: any) => ({ name: String(x?.name ?? "").trim(), price: Number(x?.price ?? 0) }))
+          .map((x: any) => ({
+            name: String(x?.name ?? "").trim(),
+            price: Number(x?.price ?? 0),
+          }))
           .filter((x: CatalogItem) => x.name.length > 0);
       }
     }
@@ -135,8 +140,13 @@ export default function SalesPage() {
   }, [payType]);
 
   const categoryItems = useMemo(() => catalog[category] ?? [], [catalog, category]);
+
   const total = useMemo(
-    () => cart.reduce((s, it) => s + (Number.isFinite(it.price) ? it.price : 0) * (it.qty || 0), 0),
+    () =>
+      cart.reduce(
+        (s, it) => s + (Number.isFinite(it.price) ? it.price : 0) * (it.qty || 0),
+        0
+      ),
     [cart]
   );
 
@@ -157,14 +167,22 @@ export default function SalesPage() {
       if (error) throw error;
 
       const rows = (data ?? []) as any[];
-      const cashIn = rows.filter((r) => r.pay_type === "cash").reduce((a, r) => a + Number(r.amount || 0), 0);
-      const cashOut = rows.filter((r) => r.pay_type === "payout").reduce((a, r) => a + Number(r.amount || 0), 0);
+      const cashIn = rows
+        .filter((r) => r.pay_type === "cash")
+        .reduce((a, r) => a + Number(r.amount || 0), 0);
+      const cashOut = rows
+        .filter((r) => r.pay_type === "payout")
+        .reduce((a, r) => a + Number(r.amount || 0), 0);
       setCashBalance(cashIn - cashOut);
 
       const startISO = startOfTodayISO();
       const today = rows.filter((r) => (r.created_at || "") >= startISO);
-      const tIn = today.filter((r) => r.pay_type === "cash").reduce((a, r) => a + Number(r.amount || 0), 0);
-      const tOut = today.filter((r) => r.pay_type === "payout").reduce((a, r) => a + Number(r.amount || 0), 0);
+      const tIn = today
+        .filter((r) => r.pay_type === "cash")
+        .reduce((a, r) => a + Number(r.amount || 0), 0);
+      const tOut = today
+        .filter((r) => r.pay_type === "payout")
+        .reduce((a, r) => a + Number(r.amount || 0), 0);
       setCashInToday(tIn);
       setCashOutToday(tOut);
     } catch {
@@ -179,6 +197,7 @@ export default function SalesPage() {
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(10);
+
     if (error) {
       setErr(error.message);
       return;
@@ -239,6 +258,7 @@ export default function SalesPage() {
           setErr("Enter a payout amount.");
           return;
         }
+
         const { error } = await supabase.from("sales").insert({
           category,
           amount: amt,
@@ -248,7 +268,6 @@ export default function SalesPage() {
         });
         if (error) throw error;
 
-        // Notify owner
         notify("Payout (-)", `${money(amt)} • ${note.trim() || category}`);
 
         setPayoutAmount("");
@@ -283,32 +302,25 @@ export default function SalesPage() {
         })
         .select("id")
         .single();
+
       if (saleErr) throw saleErr;
-      const itemsText =
-  itemsPayload?.length
-    ? itemsPayload.map((x) => `${x.qty}x ${x.name}`).join(", ")
-    : "";
 
-const baseLine =
-  `${category} • ${money(amount)}` +
-  (itemsText ? ` • ${itemsText}` : "") +
-  (note.trim() ? ` • Note: ${note.trim()}` : "");
+      // Build a nice line for notification
+      const itemsText = itemsPayload.map((x) => `${x.qty}x ${x.name}`).join(", ");
+      const baseLine =
+        `${category} • ${money(amount)}` +
+        (itemsText ? ` • ${itemsText}` : "") +
+        (note.trim() ? ` • ${note.trim()}` : "");
 
-// Owner notifications
-if (payType === "cash") notify("Sale (+)", baseLine);
-if (payType === "debt") notify("Debt (new)", `${customerName.trim()} • ${customerPhone.trim()} • ${baseLine}`);
+      // Notify owner for sale/debt
+      if (payType === "cash") notify("Sale (+)", baseLine);
 
-      // Notify owner for every sale/debt creation
-      if (payType === "cash") {
-        notify(
-          "Sale (+)",
-          `${category} • ${money(amount)}${note.trim() ? ` • ${note.trim()}` : ""}`
-        );
-      }
       if (payType === "debt") {
         notify(
           "Debt (new)",
-          `${customerName.trim()} • ${customerPhone.trim()} • ${money(amount)}${dueAt ? ` • Due: ${new Date(dueAt).toLocaleString()}` : ""}`
+          `${customerName.trim()} • ${customerPhone.trim()} • ${money(amount)}${
+            dueAt ? ` • Due: ${new Date(dueAt).toLocaleString()}` : ""
+          }`
         );
       }
 
@@ -316,6 +328,7 @@ if (payType === "debt") notify("Debt (new)", `${customerName.trim()} • ${custo
       if (payType === "debt") {
         const dueISO = dueAt ? new Date(dueAt).toISOString() : null;
         const dueDate = dueAt ? dueAt.split("T")[0] : null;
+
         const { error: debtErr } = await supabase.from("debts").insert({
           customer_name: customerName.trim(),
           customer_phone: customerPhone.trim(),
@@ -327,36 +340,46 @@ if (payType === "debt") notify("Debt (new)", `${customerName.trim()} • ${custo
           due_at: dueISO,
           due_date: dueDate,
         });
-        if (debtErr) throw debtErr;
-        // Open WhatsApp directly (ready message)
-const waPhone = normalizePhone(customerPhone.trim());
-if (waPhone) {
-  const waMsg =
-    `مرحبا ${customerName.trim()} 👋\n` +
-    `تذكير بالدفع - Mokhtar Cell\n` +
-    `المبلغ: ${money(amount)}\n` +
-    (dueAt ? `الموعد: ${new Date(dueAt).toLocaleString()}\n` : "") +
-    (note.trim() ? `ملاحظة: ${note.trim()}\n` : "") +
-    `\n---\n` +
-    `Hi ${customerName.trim()} 👋\n` +
-    `Payment reminder - Mokhtar Cell\n` +
-    `Amount: ${money(amount)}\n` +
-    (dueAt ? `Due: ${new Date(dueAt).toLocaleString()}\n` : "") +
-    (note.trim() ? `Note: ${note.trim()}\n` : "");
 
-  window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`, "_blank");
-}
+        if (debtErr) throw debtErr;
+
+        // WhatsApp direct open (ready message)
+        const waPhone = normalizePhone(customerPhone.trim());
+        if (waPhone) {
+          const waMsg =
+            `مرحبا ${customerName.trim()} 👋\n` +
+            `تذكير بالدفع - Mokhtar Cell\n` +
+            `المبلغ: ${money(amount)}\n` +
+            (dueAt ? `الموعد: ${new Date(dueAt).toLocaleString()}\n` : "") +
+            (note.trim() ? `ملاحظة: ${note.trim()}\n` : "") +
+            (itemsText ? `Items: ${itemsText}\n` : "") +
+            `\n---\n` +
+            `Hi ${customerName.trim()} 👋\n` +
+            `Payment reminder - Mokhtar Cell\n` +
+            `Amount: ${money(amount)}\n` +
+            (dueAt ? `Due: ${new Date(dueAt).toLocaleString()}\n` : "") +
+            (note.trim() ? `Note: ${note.trim()}\n` : "") +
+            (itemsText ? `Items: ${itemsText}\n` : "");
+
+          window.open(
+            `https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`,
+            "_blank"
+          );
+        }
       }
 
-      // Extra context notification for Wish Money (transfer/receive)
-const isWishCategory = String(category).toLowerCase().includes("wish");
-if (isWishCategory) {
-  const hasTransfer = itemsPayload.some((x) => String(x.name).toLowerCase().includes("transfer"));
-  const hasReceive = itemsPayload.some((x) => String(x.name).toLowerCase().includes("receive"));
-  const wishLabel = hasTransfer ? "Wish Transfer" : hasReceive ? "Wish Receive" : "Wish";
-
-  notify(wishLabel, baseLine);
-}
+      // Wish notifications (Transfer / Receive)
+      const isWishCategory = String(category).toLowerCase().includes("wish");
+      if (isWishCategory) {
+        const hasTransfer = itemsPayload.some((x) =>
+          String(x.name).toLowerCase().includes("transfer")
+        );
+        const hasReceive = itemsPayload.some((x) =>
+          String(x.name).toLowerCase().includes("receive")
+        );
+        const wishLabel = hasTransfer ? "Wish Transfer" : hasReceive ? "Wish Receive" : "Wish Money";
+        notify(wishLabel, baseLine);
+      }
 
       // reset
       setCart([]);
@@ -375,11 +398,17 @@ if (isWishCategory) {
   async function softDelete(id: string) {
     const ok = confirm("Delete this sale? (It will be hidden from totals)");
     if (!ok) return;
-    const { error } = await supabase.from("sales").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+
+    const { error } = await supabase
+      .from("sales")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", id);
+
     if (error) {
       setErr(error.message);
       return;
     }
+
     notify("Sale deleted", `A sale was deleted (hidden from totals).`);
     await refreshLatest();
   }
@@ -397,290 +426,343 @@ if (isWishCategory) {
 
   return (
     <>
-  <PushInit />
-    <div className="page">
-      <div className="header">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <h1>Sales</h1>
-            <div className="sub">
-              <span style={{ fontWeight: 900 }}>Today:</span> {new Date().toLocaleDateString()} • USD • fast POS
-            </div>
-          </div>
-          <div style={{ minWidth: 280 }}>
-            <PushButtons compact />
-          </div>
-        </div>
-      </div>
+      <PushInit />
 
-      <div className="grid metrics" style={{ marginTop: 14 }}>
-        <div className="card">
-          <div className="muted">Cash balance</div>
-          <div className="big">{money(cashBalance)}</div>
-          <div className="tiny">cash in − payout</div>
-        </div>
-        <div className="card">
-          <div className="muted">Cash in (today)</div>
-          <div className="big">{money(cashInToday)}</div>
-        </div>
-        <div className="card">
-          <div className="muted">Cash out (today)</div>
-          <div className="big">{money(cashOutToday)}</div>
-        </div>
-      </div>
-
-      {err ? <div className="toast error">{err}</div> : null}
-
-      <div className="grid two">
-        {/* LEFT */}
-        <div className="card">
-          <div className="sectionTitle">POS</div>
-
-          {/* Pay controls (top-right) */}
-          <div className="payTop">
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button className={`pill ${payType === "cash" ? "active" : ""}`} onClick={() => setPayType("cash")} type="button">
-                Cash (+)
-              </button>
-              <button className={`pill ${payType === "debt" ? "active" : ""}`} onClick={() => setPayType("debt")} type="button">
-                Debt
-              </button>
-              <button className={`pill ${payType === "payout" ? "active" : ""}`} onClick={() => setPayType("payout")} type="button">
-                Payout (-)
-              </button>
-            </div>
-            <div className="payTopRight">
-              <div className="muted" style={{ fontWeight: 900, fontSize: 12 }}>Total</div>
-              <div className="big" style={{ fontSize: 22 }}>{payType === "payout" ? money(Number(payoutAmount || 0)) : money(total)}</div>
-              <button className="btn primary" type="button" onClick={onPay} disabled={loading}>
-                {loading ? "Saving…" : payType === "payout" ? "SAVE" : "PAY"}
-              </button>
-            </div>
-          </div>
-
-          <div className="pillRow">
-            {CATEGORIES.map((c) => (
-              <button
-                key={c}
-                className={`pill ${category === c ? "active" : ""}`}
-                onClick={() => setCategory(c)}
-                type="button"
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-
-          <div className="divider" />
-
-          {payType === "payout" ? (
-            <div style={{ marginTop: 14 }}>
-              <div className="row">
-                <label className="label">Payout amount (USD)</label>
-                <input
-                  className="input"
-                  value={payoutAmount}
-                  onChange={(e) => setPayoutAmount(e.target.value)}
-                  placeholder="e.g. 20"
-                />
+      <div className="page">
+        <div className="header">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <h1>Sales</h1>
+              <div className="sub">
+                <span style={{ fontWeight: 900 }}>Today:</span>{" "}
+                {new Date().toLocaleDateString()} • USD • fast POS
               </div>
             </div>
-          ) : (
-            <>
-              <div className="row" style={{ marginTop: 14, display: "flex", justifyContent: "space-between" }}>
-                <div className="label">Tap item to add • edit prices in cart</div>
-                <button className="link" type="button" onClick={openManage}>
-                  Manage items
+            <div style={{ minWidth: 280 }}>
+              <PushButtons compact />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid metrics" style={{ marginTop: 14 }}>
+          <div className="card">
+            <div className="muted">Cash balance</div>
+            <div className="big">{money(cashBalance)}</div>
+            <div className="tiny">cash in − payout</div>
+          </div>
+          <div className="card">
+            <div className="muted">Cash in (today)</div>
+            <div className="big">{money(cashInToday)}</div>
+          </div>
+          <div className="card">
+            <div className="muted">Cash out (today)</div>
+            <div className="big">{money(cashOutToday)}</div>
+          </div>
+        </div>
+
+        {err ? <div className="toast error">{err}</div> : null}
+
+        <div className="grid two">
+          {/* LEFT */}
+          <div className="card">
+            <div className="sectionTitle">POS</div>
+
+            {/* Pay controls (top-right) */}
+            <div className="payTop">
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  className={`pill ${payType === "cash" ? "active" : ""}`}
+                  onClick={() => setPayType("cash")}
+                  type="button"
+                >
+                  Cash (+)
+                </button>
+                <button
+                  className={`pill ${payType === "debt" ? "active" : ""}`}
+                  onClick={() => setPayType("debt")}
+                  type="button"
+                >
+                  Debt
+                </button>
+                <button
+                  className={`pill ${payType === "payout" ? "active" : ""}`}
+                  onClick={() => setPayType("payout")}
+                  type="button"
+                >
+                  Payout (-)
                 </button>
               </div>
-
-              <div className="pillRow" style={{ marginTop: 10 }}>
-                {categoryItems.length === 0 ? (
-                  <div className="muted">No quick items in this category.</div>
-                ) : null}
-                {categoryItems.map((it, idx) => (
-                  <button
-                    key={`${it.name}-${idx}`}
-                    type="button"
-                    className="pill"
-                    onClick={() => addToCart(it.name, it.price)}
-                  >
-                    {it.name}
-                    <span className="pillSub">{it.price ? money(it.price) : ""}</span>
-                  </button>
-                ))}
+              <div className="payTopRight">
+                <div className="muted" style={{ fontWeight: 900, fontSize: 12 }}>
+                  Total
+                </div>
+                <div className="big" style={{ fontSize: 22 }}>
+                  {payType === "payout"
+                    ? money(Number(payoutAmount || 0))
+                    : money(total)}
+                </div>
+                <button
+                  className="btn primary"
+                  type="button"
+                  onClick={onPay}
+                  disabled={loading}
+                >
+                  {loading ? "Saving…" : payType === "payout" ? "SAVE" : "PAY"}
+                </button>
               </div>
+            </div>
 
-              <div className="row" style={{ marginTop: 14 }}>
-                <label className="label">Custom item</label>
-                <div className="grid three" style={{ gap: 10 }}>
+            <div className="pillRow">
+              {CATEGORIES.map((c) => (
+                <button
+                  key={c}
+                  className={`pill ${category === c ? "active" : ""}`}
+                  onClick={() => setCategory(c)}
+                  type="button"
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+
+            <div className="divider" />
+
+            {payType === "payout" ? (
+              <div style={{ marginTop: 14 }}>
+                <div className="row">
+                  <label className="label">Payout amount (USD)</label>
                   <input
-                    ref={customNameRef}
                     className="input"
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
-                    placeholder="Item name"
+                    value={payoutAmount}
+                    onChange={(e) => setPayoutAmount(e.target.value)}
+                    placeholder="e.g. 20"
                   />
-                  <input
-                    className="input"
-                    value={customPrice}
-                    onChange={(e) => setCustomPrice(e.target.value)}
-                    placeholder="Price (USD)"
-                  />
-                  <button className="btn" type="button" onClick={addCustom}>
-                    Add
-                  </button>
                 </div>
               </div>
+            ) : (
+              <>
+                <div
+                  className="row"
+                  style={{
+                    marginTop: 14,
+                    display: "flex",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div className="label">Tap item to add • edit prices in cart</div>
+                  <button className="link" type="button" onClick={openManage}>
+                    Manage items
+                  </button>
+                </div>
 
-              <div className="divider" />
+                <div className="pillRow" style={{ marginTop: 10 }}>
+                  {categoryItems.length === 0 ? (
+                    <div className="muted">No quick items in this category.</div>
+                  ) : null}
+                  {categoryItems.map((it, idx) => (
+                    <button
+                      key={`${it.name}-${idx}`}
+                      type="button"
+                      className="pill"
+                      onClick={() => addToCart(it.name, it.price)}
+                    >
+                      {it.name}
+                      <span className="pillSub">{it.price ? money(it.price) : ""}</span>
+                    </button>
+                  ))}
+                </div>
 
-              <div className="sectionTitle" style={{ marginTop: 6 }}>
-                Cart
-              </div>
+                <div className="row" style={{ marginTop: 14 }}>
+                  <label className="label">Custom item</label>
+                  <div className="grid three" style={{ gap: 10 }}>
+                    <input
+                      ref={customNameRef}
+                      className="input"
+                      value={customName}
+                      onChange={(e) => setCustomName(e.target.value)}
+                      placeholder="Item name"
+                    />
+                    <input
+                      className="input"
+                      value={customPrice}
+                      onChange={(e) => setCustomPrice(e.target.value)}
+                      placeholder="Price (USD)"
+                    />
+                    <button className="btn" type="button" onClick={addCustom}>
+                      Add
+                    </button>
+                  </div>
+                </div>
 
-              {cart.length === 0 ? <div className="muted">No items yet.</div> : null}
+                <div className="divider" />
 
-              <div className="cart">
-                {cart.map((it, i) => (
-                  <div key={`${it.name}-${i}`} className="cartRow">
-                    <div>
-                      <div className="cartName">{it.name}</div>
-                      <div className="cartSub">Line: {money(it.price * it.qty)}</div>
+                <div className="sectionTitle" style={{ marginTop: 6 }}>
+                  Cart
+                </div>
+
+                {cart.length === 0 ? <div className="muted">No items yet.</div> : null}
+
+                <div className="cart">
+                  {cart.map((it, i) => (
+                    <div key={`${it.name}-${i}`} className="cartRow">
+                      <div>
+                        <div className="cartName">{it.name}</div>
+                        <div className="cartSub">Line: {money(it.price * it.qty)}</div>
+                      </div>
+
+                      <div className="cartControls">
+                        <div className="mini">
+                          <span className="miniLabel">Qty</span>
+                          <input
+                            className="miniInput"
+                            value={String(it.qty)}
+                            onChange={(e) =>
+                              updateCart(i, { qty: Number(e.target.value || 0) })
+                            }
+                          />
+                        </div>
+                        <div className="mini">
+                          <span className="miniLabel">Price</span>
+                          <input
+                            className="miniInput"
+                            value={String(it.price)}
+                            onChange={(e) =>
+                              updateCart(i, { price: Number(e.target.value || 0) })
+                            }
+                          />
+                        </div>
+                        <button className="btn danger" type="button" onClick={() => removeCart(i)}>
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {payType === "debt" ? (
+                  <div style={{ marginTop: 12 }}>
+                    <div className="sectionTitle">Debt details</div>
+                    <div className="grid two" style={{ gap: 10 }}>
+                      <input
+                        className="input"
+                        placeholder="Customer name"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                      />
+                      <input
+                        className="input"
+                        placeholder="Customer phone"
+                        value={customerPhone}
+                        onChange={(e) => setCustomerPhone(e.target.value)}
+                      />
                     </div>
 
-                    <div className="cartControls">
-                      <div className="mini">
-                        <span className="miniLabel">Qty</span>
-                        <input
-                          className="miniInput"
-                          value={String(it.qty)}
-                          onChange={(e) => updateCart(i, { qty: Number(e.target.value || 0) })}
-                        />
+                    <div className="row" style={{ marginTop: 10 }}>
+                      <label className="label">Due date & time</label>
+                      <input
+                        className="input"
+                        type="datetime-local"
+                        value={dueAt}
+                        onChange={(e) => setDueAt(e.target.value)}
+                      />
+                      <div className="muted" style={{ marginTop: 6 }}>
+                        After saving debt, WhatsApp opens directly with a ready message.
                       </div>
-                      <div className="mini">
-                        <span className="miniLabel">Price</span>
-                        <input
-                          className="miniInput"
-                          value={String(it.price)}
-                          onChange={(e) => updateCart(i, { price: Number(e.target.value || 0) })}
-                        />
+                    </div>
+                  </div>
+                ) : null}
+
+                <div style={{ marginTop: 12 }} className="row">
+                  <label className="label">Note (received / transfer / details)</label>
+                  <input
+                    className="input"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Optional"
+                  />
+                </div>
+
+                <div className="muted" style={{ marginTop: 10, fontWeight: 800 }}>
+                  Tip: Edit price directly in cart before Pay.
+                </div>
+              </>
+            )}
+
+            {payType === "payout" ? (
+              <>
+                <div style={{ marginTop: 12 }} className="row">
+                  <label className="label">Note (why payout?)</label>
+                  <input
+                    className="input"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Optional"
+                  />
+                </div>
+
+                <div className="muted" style={{ marginTop: 10, fontWeight: 800 }}>
+                  Payout will reduce cash balance.
+                </div>
+              </>
+            ) : null}
+          </div>
+
+          {/* RIGHT */}
+          <div className="card">
+            <div className="sectionTitle">Latest sales</div>
+            <div className="muted">Deletes are soft (hidden from totals).</div>
+
+            <div style={{ marginTop: 10 }}>
+              {latest.length === 0 ? <div className="muted">No sales yet.</div> : null}
+              {latest.map((s) => {
+                const itemsLine =
+                  Array.isArray(s.items) && s.items.length
+                    ? s.items.map((x: any) => `${x.qty || 1}x ${x.name}`).join(", ")
+                    : "";
+
+                return (
+                  <div key={s.id} className="saleRow">
+                    <div>
+                      <div className="saleTitle">
+                        {s.category} • {s.pay_type.toUpperCase()}
                       </div>
-                      <button className="btn danger" type="button" onClick={() => removeCart(i)}>
-                        Remove
+                      <div className="saleSub">
+                        {new Date(s.created_at).toLocaleString()}
+                        {s.note ? ` • ${s.note}` : ""}
+                        {itemsLine ? ` • ${itemsLine}` : ""}
+                      </div>
+                    </div>
+                    <div className="saleRight">
+                      <div className="big">{money(s.amount)}</div>
+                      <button className="btn danger" type="button" onClick={() => softDelete(s.id)}>
+                        Delete
                       </button>
                     </div>
                   </div>
-                ))}
-              </div>
-
-              {payType === "debt" ? (
-                <div style={{ marginTop: 12 }}>
-                  <div className="sectionTitle">Debt details</div>
-                  <div className="grid two" style={{ gap: 10 }}>
-                    <input
-                      className="input"
-                      placeholder="Customer name"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                    />
-                    <input
-                      className="input"
-                      placeholder="Customer phone"
-                      value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="row" style={{ marginTop: 10 }}>
-                    <label className="label">Due date & time</label>
-                    <input
-                      className="input"
-                      type="datetime-local"
-                      value={dueAt}
-                      onChange={(e) => setDueAt(e.target.value)}
-                    />
-                    <div className="muted" style={{ marginTop: 6 }}>
-                      When due time arrives, you can send WhatsApp. (Auto push requires push setup.)
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              <div style={{ marginTop: 12 }} className="row">
-                <label className="label">Note (received / transfer / details)</label>
-                <input
-                  className="input"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Optional"
-                />
-              </div>
-
-              <div className="muted" style={{ marginTop: 10, fontWeight: 800 }}>
-                Tip: Edit price directly in cart before Pay.
-              </div>
-            </>
-          )}
-
-          {payType === "payout" ? (
-            <>
-              <div style={{ marginTop: 12 }} className="row">
-                <label className="label">Note (why payout?)</label>
-                <input
-                  className="input"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Optional"
-                />
-              </div>
-
-              <div className="muted" style={{ marginTop: 10, fontWeight: 800 }}>
-                Payout will reduce cash balance.
-              </div>
-            </>
-          ) : null}
-        </div>
-
-        {/* RIGHT */}
-        <div className="card">
-          <div className="sectionTitle">Latest sales</div>
-          <div className="muted">Deletes are soft (hidden from totals).</div>
-
-          <div style={{ marginTop: 10 }}>
-            {latest.length === 0 ? <div className="muted">No sales yet.</div> : null}
-            {latest.map((s) => (
-              <div key={s.id} className="saleRow">
-                <div>
-                  <div className="saleTitle">
-                    {s.category} • {s.pay_type.toUpperCase()}
-                  </div>
-                  <div className="saleSub">
-                    {new Date(s.created_at).toLocaleString()} {s.note ? `• ${s.note}` : ""}
-                  </div>
-                </div>
-                <div className="saleRight">
-                  <div className="big">{money(s.amount)}</div>
-                  <button className="btn danger" type="button" onClick={() => softDelete(s.id)}>
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
+                );
+              })}
+            </div>
           </div>
         </div>
+
+        {isManageOpen ? (
+          <ManageModal
+            category={category}
+            items={categoryItems}
+            onClose={() => setIsManageOpen(false)}
+            onSave={saveManage}
+          />
+        ) : null}
       </div>
-    
-      
-      {isManageOpen ? (
-        <ManageModal
-          category={category}
-          items={categoryItems}
-          onClose={() => setIsManageOpen(false)}
-          onSave={saveManage}
-        />
-      ) : null}
-      </div>   
+
       <style jsx>{`
         .grid { display: grid; gap: 14px; }
         .grid.two { grid-template-columns: 1.2fr 0.8fr; }
@@ -703,6 +785,7 @@ if (isWishCategory) {
         .pillSub { margin-left: 8px; opacity: 0.65; font-size: 12px; }
         .muted { color: rgba(255,255,255,0.55); font-size: 13px; }
         .big { font-size: 20px; font-weight: 700; }
+        .tiny { color: rgba(255,255,255,0.5); font-size: 12px; margin-top: 4px; }
         .cart { margin-top: 10px; display:flex; flex-direction: column; gap: 10px; }
         .cartRow { display:flex; justify-content: space-between; gap: 12px; padding: 12px; border-radius: 16px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
         .cartName { font-weight: 700; }
@@ -711,14 +794,12 @@ if (isWishCategory) {
         .mini { display:flex; align-items: center; gap: 8px; }
         .miniLabel { font-size: 12px; opacity: 0.65; }
         .miniInput { width: 70px; padding: 8px 10px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); color: white; }
-        .payBar { margin-top: 14px; display:flex; justify-content: space-between; align-items: center; padding: 14px; border-radius: 18px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
         .saleRow { display:flex; justify-content: space-between; align-items:flex-start; gap: 12px; padding: 12px; border-radius: 16px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); margin-top: 10px; }
         .saleTitle { font-weight: 700; }
         .saleSub { font-size: 12px; opacity: 0.7; margin-top: 2px; }
         .saleRight { display:flex; flex-direction: column; align-items:flex-end; gap: 8px; }
         .toast.error { margin: 10px 0; padding: 10px 12px; border-radius: 14px; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35); }
       `}</style>
-   
     </>
   );
 }
@@ -734,7 +815,9 @@ function ManageModal({
   onClose: () => void;
   onSave: (items: CatalogItem[]) => void;
 }) {
-  const [rows, setRows] = useState<CatalogItem[]>(() => items.map((x) => ({ ...x })));
+  const [rows, setRows] = useState<CatalogItem[]>(() =>
+    items.map((x) => ({ ...x }))
+  );
 
   function updateRow(i: number, patch: Partial<CatalogItem>) {
     setRows((prev) => {
@@ -787,7 +870,9 @@ function ManageModal({
                 className="input"
                 placeholder="Price"
                 value={String(r.price)}
-                onChange={(e) => updateRow(i, { price: Number(e.target.value || 0) })}
+                onChange={(e) =>
+                  updateRow(i, { price: Number(e.target.value || 0) })
+                }
               />
               <button className="btn danger" type="button" onClick={() => removeRow(i)}>
                 Delete
@@ -838,6 +923,5 @@ function ManageModal({
         .muted { color: rgba(255,255,255,0.55); font-size: 13px; }
       `}</style>
     </div>
-  
   );
 }
