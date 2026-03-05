@@ -128,6 +128,11 @@ export default function SalesPage() {
   const [cashOutToday, setCashOutToday] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [wishType, setWishType] = useState<"transfer" | "receive">("transfer");
+const [wishCurrency, setWishCurrency] = useState<"USD" | "LBP">("USD");
+const [wishAmount, setWishAmount] = useState<string>("");
+const [wishUsdBalance, setWishUsdBalance] = useState<number>(0);
+const [wishLbpBalance, setWishLbpBalance] = useState<number>(0);
 
   useEffect(() => {
     setCatalog(loadCatalog());
@@ -155,6 +160,62 @@ export default function SalesPage() {
     d.setHours(0, 0, 0, 0);
     return d.toISOString();
   }
+  async function refreshWishBalances() {
+  const { data, error } = await supabase
+    .from("wish_transactions")
+    .select("type,currency,amount")
+    .order("created_at", { ascending: false })
+    .limit(5000);
+
+  if (error) return;
+
+  let usd = 0;
+  let lbp = 0;
+
+  for (const r of data || []) {
+    const amt = Number((r as any).amount || 0);
+    const sign = (r as any).type === "transfer" ? +1 : -1;
+    if ((r as any).currency === "USD") usd += sign * amt;
+    if ((r as any).currency === "LBP") lbp += sign * amt;
+  }
+
+  setWishUsdBalance(usd);
+  setWishLbpBalance(lbp);
+}
+
+async function saveWish() {
+  setErr(null);
+  setLoading(true);
+  try {
+    const amt = Number(wishAmount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setErr("Enter Wish amount.");
+      return;
+    }
+
+    const { error } = await supabase.from("wish_transactions").insert({
+      type: wishType,
+      currency: wishCurrency,
+      amount: amt,
+      note: note.trim() || null,
+    });
+
+    if (error) throw error;
+
+    notify(
+      `Wish ${wishType === "transfer" ? "Transfer (+)" : "Receive (-)"}`,
+      `${wishCurrency} ${amt}${note.trim() ? ` • ${note.trim()}` : ""}`
+    );
+
+    setWishAmount("");
+    setNote("");
+    await refreshWishBalances();
+  } catch (e: any) {
+    setErr(e?.message ?? "Wish save failed");
+  } finally {
+    setLoading(false);
+  }
+}
 
   async function refreshCashMetrics() {
     try {
@@ -208,6 +269,7 @@ export default function SalesPage() {
 
   useEffect(() => {
     refreshLatest();
+     refreshWishBalances();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
