@@ -6,20 +6,21 @@ import PushButtons from "@/components/PushButtons";
 import { notify } from "@/lib/notify";
 import PushInit from "@/components/PushInit";
 
+/** POS categories (Wish is NOT here) */
 const CATEGORIES = [
   "Phones",
   "Accessories",
-  "Wish Money",
   "Repair",
   "Services",
   "Other",
 ] as const;
 
-type Category = (typeof CATEGORIES)[number];
+type PosCategory = (typeof CATEGORIES)[number];
+type Category = PosCategory | "Wish";
 type PayType = "cash" | "debt" | "payout";
 
 type CatalogItem = { name: string; price: number };
-type Catalog = Record<Category, CatalogItem[]>;
+type Catalog = Record<PosCategory, CatalogItem[]>;
 
 type CartItem = { name: string; price: number; qty: number };
 
@@ -53,10 +54,6 @@ function defaultCatalog(): Catalog {
   return {
     Phones: [],
     Accessories: [{ name: "Cover", price: 5 }],
-    "Wish Money": [
-      { name: "Receive", price: 0 },
-      { name: "Transfer", price: 0 },
-    ],
     Repair: [
       { name: "Screen", price: 0 },
       { name: "Battery", price: 0 },
@@ -126,26 +123,16 @@ export default function SalesPage() {
   const [cashBalance, setCashBalance] = useState<number>(0);
   const [cashInToday, setCashInToday] = useState<number>(0);
   const [cashOutToday, setCashOutToday] = useState<number>(0);
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // ✅ WISH SYSTEM (separate from cash totals)
   const [wishType, setWishType] = useState<"transfer" | "receive">("transfer");
-const [wishCurrency, setWishCurrency] = useState<"USD" | "LBP">("USD");
-const [wishAmount, setWishAmount] = useState<string>("");
-const [wishUsdBalance, setWishUsdBalance] = useState<number>(0);
-const [wishLbpBalance, setWishLbpBalance] = useState<number>(0);
-
-// خيار الـ receive
-const [wishCountAsReceived, setWishCountAsReceived] = useState(true);
-
-// Totals داخل wish
-const [wishUsdTotal, setWishUsdTotal] = useState(0);
-const [wishLbpTotal, setWishLbpTotal] = useState(0);
-
-const [wishUsdTransferTotal, setWishUsdTransferTotal] = useState(0);
-const [wishLbpTransferTotal, setWishLbpTransferTotal] = useState(0);
-
-const [wishUsdReceivedTotal, setWishUsdReceivedTotal] = useState(0);
-const [wishLbpReceivedTotal, setWishLbpReceivedTotal] = useState(0);
+  const [wishCurrency, setWishCurrency] = useState<"USD" | "LBP">("USD");
+  const [wishAmount, setWishAmount] = useState<string>("");
+  const [wishUsdBalance, setWishUsdBalance] = useState<number>(0);
+  const [wishLbpBalance, setWishLbpBalance] = useState<number>(0);
 
   useEffect(() => {
     setCatalog(loadCatalog());
@@ -157,7 +144,12 @@ const [wishLbpReceivedTotal, setWishLbpReceivedTotal] = useState(0);
     if (payType === "payout") setCart([]);
   }, [payType]);
 
-  const categoryItems = useMemo(() => catalog[category] ?? [], [catalog, category]);
+  const isWish = category === "Wish";
+
+  const categoryItems = useMemo(() => {
+    if (isWish) return [];
+    return catalog[category as PosCategory] ?? [];
+  }, [catalog, category, isWish]);
 
   const total = useMemo(
     () =>
@@ -173,62 +165,67 @@ const [wishLbpReceivedTotal, setWishLbpReceivedTotal] = useState(0);
     d.setHours(0, 0, 0, 0);
     return d.toISOString();
   }
+
   async function refreshWishBalances() {
-  const { data, error } = await supabase
-    .from("wish_transactions")
-    .select("type,currency,amount")
-    .order("created_at", { ascending: false })
-    .limit(5000);
+    const { data, error } = await supabase
+      .from("wish_transactions")
+      .select("type,currency,amount,created_at")
+      .order("created_at", { ascending: false })
+      .limit(5000);
 
-  if (error) return;
+    if (error) return;
 
-  let usd = 0;
-  let lbp = 0;
+    let usd = 0;
+    let lbp = 0;
 
-  for (const r of data || []) {
-    const amt = Number((r as any).amount || 0);
-    const sign = (r as any).type === "transfer" ? +1 : -1;
-    if ((r as any).currency === "USD") usd += sign * amt;
-    if ((r as any).currency === "LBP") lbp += sign * amt;
-  }
-
-  setWishUsdBalance(usd);
-  setWishLbpBalance(lbp);
-}
-
-async function saveWish() {
-  setErr(null);
-  setLoading(true);
-  try {
-    const amt = Number(wishAmount);
-    if (!Number.isFinite(amt) || amt <= 0) {
-      setErr("Enter Wish amount.");
-      return;
+    for (const r of data || []) {
+      const amt = Number((r as any).amount || 0);
+      // transfer يزيد - receive ينقص
+      const sign = (r as any).type === "transfer" ? +1 : -1;
+      if ((r as any).currency === "USD") usd += sign * amt;
+      if ((r as any).currency === "LBP") lbp += sign * amt;
     }
 
-    const { error } = await supabase.from("wish_transactions").insert({
-      type: wishType,
-      currency: wishCurrency,
-      amount: amt,
-      note: note.trim() || null,
-    });
-
-    if (error) throw error;
-
-    notify(
-      `Wish ${wishType === "transfer" ? "Transfer (+)" : "Receive (-)"}`,
-      `${wishCurrency} ${amt}${note.trim() ? ` • ${note.trim()}` : ""}`
-    );
-
-    setWishAmount("");
-    setNote("");
-    await refreshWishBalances();
-  } catch (e: any) {
-    setErr(e?.message ?? "Wish save failed");
-  } finally {
-    setLoading(false);
+    setWishUsdBalance(usd);
+    setWishLbpBalance(lbp);
   }
-}
+
+  async function saveWish() {
+    setErr(null);
+    setLoading(true);
+
+    try {
+      const amt = Number(wishAmount);
+      if (!Number.isFinite(amt) || amt <= 0) {
+        setErr("Enter Wish amount.");
+        return;
+      }
+
+      const { error } = await supabase.from("wish_transactions").insert({
+        type: wishType,
+        currency: wishCurrency,
+        amount: amt,
+        note: note.trim() || null,
+      });
+
+      if (error) throw error;
+
+      notify(
+        `Wish ${wishType === "transfer" ? "Transfer (+)" : "Receive (-)"}`,
+        `${wishCurrency} ${wishCurrency === "USD" ? amt.toFixed(2) : amt.toLocaleString()}${
+          note.trim() ? ` • ${note.trim()}` : ""
+        }`
+      );
+
+      setWishAmount("");
+      setNote("");
+      await refreshWishBalances();
+    } catch (e: any) {
+      setErr(e?.message ?? "Wish save failed");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function refreshCashMetrics() {
     try {
@@ -241,22 +238,14 @@ async function saveWish() {
       if (error) throw error;
 
       const rows = (data ?? []) as any[];
-      const cashIn = rows
-        .filter((r) => r.pay_type === "cash")
-        .reduce((a, r) => a + Number(r.amount || 0), 0);
-      const cashOut = rows
-        .filter((r) => r.pay_type === "payout")
-        .reduce((a, r) => a + Number(r.amount || 0), 0);
+      const cashIn = rows.filter((r) => r.pay_type === "cash").reduce((a, r) => a + Number(r.amount || 0), 0);
+      const cashOut = rows.filter((r) => r.pay_type === "payout").reduce((a, r) => a + Number(r.amount || 0), 0);
       setCashBalance(cashIn - cashOut);
 
       const startISO = startOfTodayISO();
       const today = rows.filter((r) => (r.created_at || "") >= startISO);
-      const tIn = today
-        .filter((r) => r.pay_type === "cash")
-        .reduce((a, r) => a + Number(r.amount || 0), 0);
-      const tOut = today
-        .filter((r) => r.pay_type === "payout")
-        .reduce((a, r) => a + Number(r.amount || 0), 0);
+      const tIn = today.filter((r) => r.pay_type === "cash").reduce((a, r) => a + Number(r.amount || 0), 0);
+      const tOut = today.filter((r) => r.pay_type === "payout").reduce((a, r) => a + Number(r.amount || 0), 0);
       setCashInToday(tIn);
       setCashOutToday(tOut);
     } catch {
@@ -282,7 +271,7 @@ async function saveWish() {
 
   useEffect(() => {
     refreshLatest();
-     refreshWishBalances();
+    refreshWishBalances();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -335,7 +324,7 @@ async function saveWish() {
         }
 
         const { error } = await supabase.from("sales").insert({
-          category,
+          category: String(category),
           amount: amt,
           pay_type: "payout",
           note: note.trim() || null,
@@ -343,7 +332,7 @@ async function saveWish() {
         });
         if (error) throw error;
 
-        notify("Payout (-)", `${money(amt)} • ${note.trim() || category}`);
+        notify("Payout (-)", `${money(amt)} • ${note.trim() || String(category)}`);
 
         setPayoutAmount("");
         setNote("");
@@ -369,7 +358,7 @@ async function saveWish() {
       const { data: saleData, error: saleErr } = await supabase
         .from("sales")
         .insert({
-          category,
+          category: String(category),
           amount,
           pay_type: payType,
           note: note.trim() || null,
@@ -380,14 +369,13 @@ async function saveWish() {
 
       if (saleErr) throw saleErr;
 
-      // Build a nice line for notification
+      // nice line for notifications + latest list
       const itemsText = itemsPayload.map((x) => `${x.qty}x ${x.name}`).join(", ");
       const baseLine =
-        `${category} • ${money(amount)}` +
+        `${String(category)} • ${money(amount)}` +
         (itemsText ? ` • ${itemsText}` : "") +
         (note.trim() ? ` • ${note.trim()}` : "");
 
-      // Notify owner for sale/debt
       if (payType === "cash") notify("Sale (+)", baseLine);
 
       if (payType === "debt") {
@@ -399,7 +387,7 @@ async function saveWish() {
         );
       }
 
-      // If debt: also create a debt record (pending)
+      // If debt: create a debt record + open WhatsApp
       if (payType === "debt") {
         const dueISO = dueAt ? new Date(dueAt).toISOString() : null;
         const dueDate = dueAt ? dueAt.split("T")[0] : null;
@@ -418,7 +406,6 @@ async function saveWish() {
 
         if (debtErr) throw debtErr;
 
-        // WhatsApp direct open (ready message)
         const waPhone = normalizePhone(customerPhone.trim());
         if (waPhone) {
           const waMsg =
@@ -436,24 +423,8 @@ async function saveWish() {
             (note.trim() ? `Note: ${note.trim()}\n` : "") +
             (itemsText ? `Items: ${itemsText}\n` : "");
 
-          window.open(
-            `https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`,
-            "_blank"
-          );
+          window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`, "_blank");
         }
-      }
-
-      // Wish notifications (Transfer / Receive)
-      const isWishCategory = String(category).toLowerCase().includes("wish");
-      if (isWishCategory) {
-        const hasTransfer = itemsPayload.some((x) =>
-          String(x.name).toLowerCase().includes("transfer")
-        );
-        const hasReceive = itemsPayload.some((x) =>
-          String(x.name).toLowerCase().includes("receive")
-        );
-        const wishLabel = hasTransfer ? "Wish Transfer" : hasReceive ? "Wish Receive" : "Wish Money";
-        notify(wishLabel, baseLine);
       }
 
       // reset
@@ -489,11 +460,14 @@ async function saveWish() {
   }
 
   function openManage() {
+    if (isWish) return;
     setIsManageOpen(true);
   }
 
   function saveManage(nextItems: CatalogItem[]) {
-    const nextCatalog: Catalog = { ...catalog, [category]: nextItems };
+    if (isWish) return;
+    const key = category as PosCategory;
+    const nextCatalog: Catalog = { ...catalog, [key]: nextItems };
     setCatalog(nextCatalog);
     saveCatalog(nextCatalog);
     setIsManageOpen(false);
@@ -505,20 +479,11 @@ async function saveWish() {
 
       <div className="page">
         <div className="header">
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-end",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
             <div>
               <h1>Sales</h1>
               <div className="sub">
-                <span style={{ fontWeight: 900 }}>Today:</span>{" "}
-                {new Date().toLocaleDateString()} • USD • fast POS
+                <span style={{ fontWeight: 900 }}>Today:</span> {new Date().toLocaleDateString()} • USD • fast POS
               </div>
             </div>
             <div style={{ minWidth: 280 }}>
@@ -550,338 +515,272 @@ async function saveWish() {
           <div className="card">
             <div className="sectionTitle">POS</div>
 
-            {/* Pay controls (top-right) */}
+            {/* Top Pay Controls + Wish Button */}
             <div className="payTop">
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  className={`pill ${payType === "cash" ? "active" : ""}`}
-                  onClick={() => setPayType("cash")}
-                  type="button"
-                >
+                <button className={`pill ${payType === "cash" && !isWish ? "active" : ""}`} onClick={() => { setPayType("cash"); setCategory("Phones"); }} type="button">
                   Cash (+)
                 </button>
-                <button
-                  className={`pill ${payType === "debt" ? "active" : ""}`}
-                  onClick={() => setPayType("debt")}
-                  type="button"
-                >
+                <button className={`pill ${payType === "debt" && !isWish ? "active" : ""}`} onClick={() => { setPayType("debt"); setCategory("Phones"); }} type="button">
                   Debt
                 </button>
-                <button
-                  className={`pill ${payType === "payout" ? "active" : ""}`}
-                  onClick={() => setPayType("payout")}
-                  type="button"
-                >
+                <button className={`pill ${payType === "payout" && !isWish ? "active" : ""}`} onClick={() => { setPayType("payout"); setCategory("Phones"); }} type="button">
                   Payout (-)
                 </button>
-              </div>
-              <div className="payTopRight">
-                <div className="muted" style={{ fontWeight: 900, fontSize: 12 }}>
-                  Total
-                </div>
-                <div className="big" style={{ fontSize: 22 }}>
-                  {payType === "payout"
-                    ? money(Number(payoutAmount || 0))
-                    : money(total)}
-                </div>
-                <button
-                  className="btn primary"
-                  type="button"
-                  onClick={onPay}
-                  disabled={loading}
-                >
-                  {loading ? "Saving…" : payType === "payout" ? "SAVE" : "PAY"}
+
+                {/* ✅ Wish beside payout */}
+                <button className={`pill ${isWish ? "active" : ""}`} onClick={() => setCategory("Wish")} type="button">
+                  Wish
                 </button>
               </div>
-            </div>
 
-            <div className="pillRow">
-              {CATEGORIES.map((c) => (
-                <button
-                  key={c}
-                  className={`pill ${category === c ? "active" : ""}`}
-                  onClick={() => setCategory(c)}
-                  type="button"
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-
-            <div className="divider" />
-            {category === "Wish Money" ? (
-  <>
-    <div className="sectionTitle" style={{ marginTop: 6 }}>Wish Money</div>
-    <div className="muted">Transfer يزيد • Receive ينقص • USD/LBP لحال الـ Wish</div>
-
-    <div className="grid metrics" style={{ marginTop: 12 }}>
-      <div className="card">
-        <div className="muted">Wish Balance (USD)</div>
-        <div className="big">${Number(wishUsdBalance || 0).toFixed(2)}</div>
-      </div>
-      <div className="card">
-        <div className="muted">Wish Balance (LBP)</div>
-        <div className="big">{Number(wishLbpBalance || 0).toLocaleString()} LBP</div>
-      </div>
-      <div className="card">
-        <div className="muted">Quick</div>
-        <div className="tiny">Save any transfer/receive</div>
-      </div>
-    </div>
-
-    <div className="divider" />
-
-    <div className="payTop" style={{ marginTop: 0 }}>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          className={`pill ${wishType === "transfer" ? "active" : ""}`}
-          type="button"
-          onClick={() => setWishType("transfer")}
-        >
-          Transfer (+)
-        </button>
-        <button
-          className={`pill ${wishType === "receive" ? "active" : ""}`}
-          type="button"
-          onClick={() => setWishType("receive")}
-        >
-          Receive (-)
-        </button>
-      </div>
-
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <button
-          className={`pill ${wishCurrency === "USD" ? "active" : ""}`}
-          type="button"
-          onClick={() => setWishCurrency("USD")}
-        >
-          USD
-        </button>
-        <button
-          className={`pill ${wishCurrency === "LBP" ? "active" : ""}`}
-          type="button"
-          onClick={() => setWishCurrency("LBP")}
-        >
-          LBP
-        </button>
-      </div>
-    </div>
-
-    <div className="row" style={{ marginTop: 12 }}>
-      <label className="label">Amount ({wishCurrency})</label>
-      <input
-        className="input"
-        value={wishAmount}
-        onChange={(e) => setWishAmount(e.target.value)}
-        placeholder={wishCurrency === "USD" ? "e.g. 50" : "e.g. 1500000"}
-      />
-    </div>
-
-    <div className="row" style={{ marginTop: 10 }}>
-      <label className="label">Note (transfer / received / details)</label>
-      <input
-        className="input"
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        placeholder="Optional"
-      />
-    </div>
-
-    <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
-      <button className="btn primary" type="button" onClick={saveWish} disabled={loading}>
-        {loading ? "Saving…" : "SAVE WISH"}
-      </button>
-    </div>
-
-    <div className="muted" style={{ marginTop: 10 }}>
-      Transfer (+) بيزيد الرصيد • Receive (-) بينقص الرصيد
-    </div>
-  </>
-) : (
-  // ✅ هون خليك مخلّي الـ POS العادي متل ما هو (cart / payout / debt)
-  <>
-    {/* ...الكود القديم تبع POS (cart وغيره) خليه متل ما هو... */}
-  </>
-)}
-
-            {payType === "payout" ? (
-              <div style={{ marginTop: 14 }}>
-                <div className="row">
-                  <label className="label">Payout amount (USD)</label>
-                  <input
-                    className="input"
-                    value={payoutAmount}
-                    onChange={(e) => setPayoutAmount(e.target.value)}
-                    placeholder="e.g. 20"
-                  />
-                </div>
-              </div>
-            ) : (
-              <>
-                <div
-                  className="row"
-                  style={{
-                    marginTop: 14,
-                    display: "flex",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <div className="label">Tap item to add • edit prices in cart</div>
-                  <button className="link" type="button" onClick={openManage}>
-                    Manage items
+              {!isWish ? (
+                <div className="payTopRight">
+                  <div className="muted" style={{ fontWeight: 900, fontSize: 12 }}>Total</div>
+                  <div className="big" style={{ fontSize: 22 }}>
+                    {payType === "payout" ? money(Number(payoutAmount || 0)) : money(total)}
+                  </div>
+                  <button className="btn primary" type="button" onClick={onPay} disabled={loading}>
+                    {loading ? "Saving…" : payType === "payout" ? "SAVE" : "PAY"}
                   </button>
                 </div>
-
-                <div className="pillRow" style={{ marginTop: 10 }}>
-                  {categoryItems.length === 0 ? (
-                    <div className="muted">No quick items in this category.</div>
-                  ) : null}
-                  {categoryItems.map((it, idx) => (
-                    <button
-                      key={`${it.name}-${idx}`}
-                      type="button"
-                      className="pill"
-                      onClick={() => addToCart(it.name, it.price)}
-                    >
-                      {it.name}
-                      <span className="pillSub">{it.price ? money(it.price) : ""}</span>
-                    </button>
-                  ))}
+              ) : (
+                <div className="payTopRight">
+                  <div className="muted" style={{ fontWeight: 900, fontSize: 12 }}>Wish</div>
+                  <div className="big" style={{ fontSize: 22 }}>
+                    {wishCurrency === "USD" ? `$${Number(wishUsdBalance || 0).toFixed(2)}` : `${Number(wishLbpBalance || 0).toLocaleString()} LBP`}
+                  </div>
+                  <button className="btn primary" type="button" onClick={saveWish} disabled={loading}>
+                    {loading ? "Saving…" : "SAVE WISH"}
+                  </button>
                 </div>
+              )}
+            </div>
 
-                <div className="row" style={{ marginTop: 14 }}>
-                  <label className="label">Custom item</label>
-                  <div className="grid three" style={{ gap: 10 }}>
-                    <input
-                      ref={customNameRef}
-                      className="input"
-                      value={customName}
-                      onChange={(e) => setCustomName(e.target.value)}
-                      placeholder="Item name"
-                    />
-                    <input
-                      className="input"
-                      value={customPrice}
-                      onChange={(e) => setCustomPrice(e.target.value)}
-                      placeholder="Price (USD)"
-                    />
-                    <button className="btn" type="button" onClick={addCustom}>
-                      Add
-                    </button>
+            {/* Categories row (POS only) */}
+            {!isWish ? (
+              <div className="pillRow">
+                {CATEGORIES.map((c) => (
+                  <button key={c} className={`pill ${category === c ? "active" : ""}`} onClick={() => setCategory(c)} type="button">
+                    {c}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="divider" />
+
+            {/* ✅ WISH UI */}
+            {isWish ? (
+              <>
+                <div className="sectionTitle" style={{ marginTop: 6 }}>Wish System</div>
+                <div className="muted">Transfer يزيد الرصيد • Receive ينقص (ما بيتدخل بالكاش)</div>
+
+                <div className="grid metrics" style={{ marginTop: 12 }}>
+                  <div className="card">
+                    <div className="muted">Wish Balance USD</div>
+                    <div className="big">${Number(wishUsdBalance || 0).toFixed(2)}</div>
+                    <div className="tiny">separate</div>
+                  </div>
+
+                  <div className="card">
+                    <div className="muted">Wish Balance LBP</div>
+                    <div className="big">{Number(wishLbpBalance || 0).toLocaleString()} LBP</div>
+                    <div className="tiny">separate</div>
+                  </div>
+
+                  <div className="card">
+                    <div className="muted">Quick Action</div>
+                    <div className="tiny">Save transfer / receive</div>
                   </div>
                 </div>
 
                 <div className="divider" />
 
-                <div className="sectionTitle" style={{ marginTop: 6 }}>
-                  Cart
+                <div className="pillRow">
+                  <button className={`pill ${wishType === "transfer" ? "active" : ""}`} onClick={() => setWishType("transfer")} type="button">
+                    Transfer (+)
+                  </button>
+                  <button className={`pill ${wishType === "receive" ? "active" : ""}`} onClick={() => setWishType("receive")} type="button">
+                    Receive (-)
+                  </button>
                 </div>
 
-                {cart.length === 0 ? <div className="muted">No items yet.</div> : null}
+                <div className="pillRow" style={{ marginTop: 10 }}>
+                  <button className={`pill ${wishCurrency === "USD" ? "active" : ""}`} onClick={() => setWishCurrency("USD")} type="button">
+                    USD
+                  </button>
+                  <button className={`pill ${wishCurrency === "LBP" ? "active" : ""}`} onClick={() => setWishCurrency("LBP")} type="button">
+                    LBP
+                  </button>
+                </div>
 
-                <div className="cart">
-                  {cart.map((it, i) => (
-                    <div key={`${it.name}-${i}`} className="cartRow">
-                      <div>
-                        <div className="cartName">{it.name}</div>
-                        <div className="cartSub">Line: {money(it.price * it.qty)}</div>
-                      </div>
+                <div className="row" style={{ marginTop: 12 }}>
+                  <label className="label">Amount ({wishCurrency})</label>
+                  <input
+                    className="input"
+                    value={wishAmount}
+                    onChange={(e) => setWishAmount(e.target.value)}
+                    placeholder={wishCurrency === "USD" ? "e.g. 50" : "e.g. 1500000"}
+                  />
+                </div>
 
-                      <div className="cartControls">
-                        <div className="mini">
-                          <span className="miniLabel">Qty</span>
-                          <input
-                            className="miniInput"
-                            value={String(it.qty)}
-                            onChange={(e) =>
-                              updateCart(i, { qty: Number(e.target.value || 0) })
-                            }
-                          />
-                        </div>
-                        <div className="mini">
-                          <span className="miniLabel">Price</span>
-                          <input
-                            className="miniInput"
-                            value={String(it.price)}
-                            onChange={(e) =>
-                              updateCart(i, { price: Number(e.target.value || 0) })
-                            }
-                          />
-                        </div>
-                        <button className="btn danger" type="button" onClick={() => removeCart(i)}>
-                          Remove
+                <div className="row">
+                  <label className="label">Note (details)</label>
+                  <input
+                    className="input"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Optional"
+                  />
+                </div>
+
+                <div className="muted" style={{ marginTop: 10, fontWeight: 800 }}>
+                  Tip: Transfer يزيد • Receive ينقص — والـ Cash totals ما بيتأثروا.
+                </div>
+              </>
+            ) : (
+              <>
+                {/* ✅ POS UI */}
+                {payType === "payout" ? (
+                  <div style={{ marginTop: 14 }}>
+                    <div className="row">
+                      <label className="label">Payout amount (USD)</label>
+                      <input
+                        className="input"
+                        value={payoutAmount}
+                        onChange={(e) => setPayoutAmount(e.target.value)}
+                        placeholder="e.g. 20"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="row" style={{ marginTop: 14, display: "flex", justifyContent: "space-between" }}>
+                      <div className="label">Tap item to add • edit prices in cart</div>
+                      <button className="link" type="button" onClick={openManage}>
+                        Manage items
+                      </button>
+                    </div>
+
+                    <div className="pillRow" style={{ marginTop: 10 }}>
+                      {categoryItems.length === 0 ? <div className="muted">No quick items in this category.</div> : null}
+                      {categoryItems.map((it, idx) => (
+                        <button
+                          key={`${it.name}-${idx}`}
+                          type="button"
+                          className="pill"
+                          onClick={() => addToCart(it.name, it.price)}
+                        >
+                          {it.name}
+                          <span className="pillSub">{it.price ? money(it.price) : ""}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="row" style={{ marginTop: 14 }}>
+                      <label className="label">Custom item</label>
+                      <div className="grid three" style={{ gap: 10 }}>
+                        <input
+                          ref={customNameRef}
+                          className="input"
+                          value={customName}
+                          onChange={(e) => setCustomName(e.target.value)}
+                          placeholder="Item name"
+                        />
+                        <input
+                          className="input"
+                          value={customPrice}
+                          onChange={(e) => setCustomPrice(e.target.value)}
+                          placeholder="Price (USD)"
+                        />
+                        <button className="btn" type="button" onClick={addCustom}>
+                          Add
                         </button>
                       </div>
                     </div>
-                  ))}
-                </div>
 
-                {payType === "debt" ? (
-                  <div style={{ marginTop: 12 }}>
-                    <div className="sectionTitle">Debt details</div>
-                    <div className="grid two" style={{ gap: 10 }}>
-                      <input
-                        className="input"
-                        placeholder="Customer name"
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                      />
-                      <input
-                        className="input"
-                        placeholder="Customer phone"
-                        value={customerPhone}
-                        onChange={(e) => setCustomerPhone(e.target.value)}
-                      />
+                    <div className="divider" />
+
+                    <div className="sectionTitle" style={{ marginTop: 6 }}>Cart</div>
+                    {cart.length === 0 ? <div className="muted">No items yet.</div> : null}
+
+                    <div className="cart">
+                      {cart.map((it, i) => (
+                        <div key={`${it.name}-${i}`} className="cartRow">
+                          <div>
+                            <div className="cartName">{it.name}</div>
+                            <div className="cartSub">Line: {money(it.price * it.qty)}</div>
+                          </div>
+
+                          <div className="cartControls">
+                            <div className="mini">
+                              <span className="miniLabel">Qty</span>
+                              <input
+                                className="miniInput"
+                                value={String(it.qty)}
+                                onChange={(e) => updateCart(i, { qty: Number(e.target.value || 0) })}
+                              />
+                            </div>
+                            <div className="mini">
+                              <span className="miniLabel">Price</span>
+                              <input
+                                className="miniInput"
+                                value={String(it.price)}
+                                onChange={(e) => updateCart(i, { price: Number(e.target.value || 0) })}
+                              />
+                            </div>
+                            <button className="btn danger" type="button" onClick={() => removeCart(i)}>
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
 
-                    <div className="row" style={{ marginTop: 10 }}>
-                      <label className="label">Due date & time</label>
-                      <input
-                        className="input"
-                        type="datetime-local"
-                        value={dueAt}
-                        onChange={(e) => setDueAt(e.target.value)}
-                      />
-                      <div className="muted" style={{ marginTop: 6 }}>
-                        After saving debt, WhatsApp opens directly with a ready message.
+                    {payType === "debt" ? (
+                      <div style={{ marginTop: 12 }}>
+                        <div className="sectionTitle">Debt details</div>
+                        <div className="grid two" style={{ gap: 10 }}>
+                          <input className="input" placeholder="Customer name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+                          <input className="input" placeholder="Customer phone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+                        </div>
+
+                        <div className="row" style={{ marginTop: 10 }}>
+                          <label className="label">Due date & time</label>
+                          <input className="input" type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
+                          <div className="muted" style={{ marginTop: 6 }}>
+                            After saving debt, WhatsApp opens directly with a ready message.
+                          </div>
+                        </div>
                       </div>
+                    ) : null}
+
+                    <div style={{ marginTop: 12 }} className="row">
+                      <label className="label">Note (details)</label>
+                      <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
                     </div>
-                  </div>
+
+                    <div className="muted" style={{ marginTop: 10, fontWeight: 800 }}>
+                      Tip: Edit price directly in cart before Pay.
+                    </div>
+                  </>
+                )}
+
+                {payType === "payout" ? (
+                  <>
+                    <div style={{ marginTop: 12 }} className="row">
+                      <label className="label">Note (why payout?)</label>
+                      <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
+                    </div>
+
+                    <div className="muted" style={{ marginTop: 10, fontWeight: 800 }}>
+                      Payout will reduce cash balance.
+                    </div>
+                  </>
                 ) : null}
-
-                <div style={{ marginTop: 12 }} className="row">
-                  <label className="label">Note (received / transfer / details)</label>
-                  <input
-                    className="input"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Optional"
-                  />
-                </div>
-
-                <div className="muted" style={{ marginTop: 10, fontWeight: 800 }}>
-                  Tip: Edit price directly in cart before Pay.
-                </div>
               </>
             )}
-
-            {payType === "payout" ? (
-              <>
-                <div style={{ marginTop: 12 }} className="row">
-                  <label className="label">Note (why payout?)</label>
-                  <input
-                    className="input"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Optional"
-                  />
-                </div>
-
-                <div className="muted" style={{ marginTop: 10, fontWeight: 800 }}>
-                  Payout will reduce cash balance.
-                </div>
-              </>
-            ) : null}
           </div>
 
           {/* RIGHT */}
@@ -901,7 +800,7 @@ async function saveWish() {
                   <div key={s.id} className="saleRow">
                     <div>
                       <div className="saleTitle">
-                        {s.category} • {s.pay_type.toUpperCase()}
+                        {s.category} • {String(s.pay_type).toUpperCase()}
                       </div>
                       <div className="saleSub">
                         {new Date(s.created_at).toLocaleString()}
@@ -922,9 +821,9 @@ async function saveWish() {
           </div>
         </div>
 
-        {isManageOpen ? (
+        {isManageOpen && !isWish ? (
           <ManageModal
-            category={category}
+            category={category as PosCategory}
             items={categoryItems}
             onClose={() => setIsManageOpen(false)}
             onSave={saveManage}
@@ -979,14 +878,12 @@ function ManageModal({
   onClose,
   onSave,
 }: {
-  category: Category;
+  category: PosCategory;
   items: CatalogItem[];
   onClose: () => void;
   onSave: (items: CatalogItem[]) => void;
 }) {
-  const [rows, setRows] = useState<CatalogItem[]>(() =>
-    items.map((x) => ({ ...x }))
-  );
+  const [rows, setRows] = useState<CatalogItem[]>(() => items.map((x) => ({ ...x })));
 
   function updateRow(i: number, patch: Partial<CatalogItem>) {
     setRows((prev) => {
@@ -1039,9 +936,7 @@ function ManageModal({
                 className="input"
                 placeholder="Price"
                 value={String(r.price)}
-                onChange={(e) =>
-                  updateRow(i, { price: Number(e.target.value || 0) })
-                }
+                onChange={(e) => updateRow(i, { price: Number(e.target.value || 0) })}
               />
               <button className="btn danger" type="button" onClick={() => removeRow(i)}>
                 Delete
