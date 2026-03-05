@@ -1,20 +1,13 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import PushButtons from "@/components/PushButtons";
 import { notify } from "@/lib/notify";
 import PushInit from "@/components/PushInit";
+
 /** POS categories (Wish is NOT here) */
-const CATEGORIES = [
-  "Phones",
-  "Accessories",
-  "Repair",
-  "Services",
-  "Other",
-] as const;
+const CATEGORIES = ["Phones", "Accessories", "Repair", "Services", "Other"] as const;
 
 type PosCategory = (typeof CATEGORIES)[number];
 type Category = PosCategory | "Wish";
@@ -35,6 +28,7 @@ type SaleRow = {
   items: any;
   deleted_at?: string | null;
 };
+
 type WishRow = {
   id: string;
   created_at: string;
@@ -44,8 +38,6 @@ type WishRow = {
   note: string | null;
   counted?: boolean | null;
 };
-
-const [wishLatest, setWishLatest] = useState<WishRow[]>([]);
 
 const LS_CATALOG_KEY = "mokhtar_pos_catalog_v1";
 
@@ -108,8 +100,6 @@ function saveCatalog(catalog: Catalog) {
 }
 
 export default function SalesPage() {
-  const [wishSystemUsd, setWishSystemUsd] = useState<number>(0);
-const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
   const [category, setCategory] = useState<Category>("Phones");
   const [payType, setPayType] = useState<PayType>("cash");
 
@@ -140,23 +130,32 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // delete gate
   const [canDelete, setCanDelete] = useState(false);
 
-  // ✅ WISH SYSTEM (separate from cash totals)
+  // ✅ WISH
   const [wishType, setWishType] = useState<"transfer" | "receive">("transfer");
   const [wishCurrency, setWishCurrency] = useState<"USD" | "LBP">("USD");
   const [wishAmount, setWishAmount] = useState<string>("");
   const [wishUsdBalance, setWishUsdBalance] = useState<number>(0);
   const [wishLbpBalance, setWishLbpBalance] = useState<number>(0);
-  useEffect(() => {
-  refreshLatest();
-  refreshWishBalances();
-  refreshWishLatest();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
+  const [wishSystemUsd, setWishSystemUsd] = useState<number>(0);
+  const [wishLatest, setWishLatest] = useState<WishRow[]>([]);
+
+  const isWish = category === "Wish";
 
   useEffect(() => {
+    // catalog
     setCatalog(loadCatalog());
+
+    // delete session gate
+    if (sessionStorage.getItem("canDelete") === "1") setCanDelete(true);
+
+    // load data
+    refreshLatest();
+    refreshWishBalances();
+    refreshWishLatest();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -164,8 +163,6 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
     // payout is amount-only and should not keep cart items
     if (payType === "payout") setCart([]);
   }, [payType]);
-
-  const isWish = category === "Wish";
 
   const categoryItems = useMemo(() => {
     if (isWish) return [];
@@ -187,76 +184,6 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
     return d.toISOString();
   }
 
- async function refreshWishBalances() {
-  const { data, error } = await supabase
-    .from("wish_transactions")
-    .select("type,currency,amount,counted")
-    .order("created_at", { ascending: false })
-    .limit(5000);
-
-  if (error) return;
-
-  let usd = 0;
-  let lbp = 0;
-  let systemUsd = 0;
-
-  for (const r of data || []) {
-    const amt = Number((r as any).amount || 0);
-    const type = (r as any).type; // transfer / receive
-    const cur = (r as any).currency; // USD / LBP
-    const counted = Boolean((r as any).counted);
-
-    // Balance: transfer يزيد، receive ينقص
-    const sign = type === "transfer" ? +1 : -1;
-    if (cur === "USD") usd += sign * amt;
-    if (cur === "LBP") lbp += sign * amt;
-
-    // Wish System: فقط receive مع counted
-    if (type === "receive" && counted && cur === "USD") systemUsd += amt;
-  }
-
-  setWishUsdBalance(usd);
-  setWishLbpBalance(lbp);
-  setWishSystemUsd(systemUsd);
-}
-
-  async function saveWish() {
-    setErr(null);
-    setLoading(true);
-
-    try {
-      const amt = Number(wishAmount);
-      if (!Number.isFinite(amt) || amt <= 0) {
-        setErr("Enter Wish amount.");
-        return;
-      }
-
-      const { error } = await supabase.from("wish_transactions").insert({
-        type: wishType,
-        currency: wishCurrency,
-        amount: amt,
-        note: note.trim() || null,
-      });
-
-      if (error) throw error;
-
-      notify(
-        `Wish ${wishType === "transfer" ? "Transfer (+)" : "Receive (-)"}`,
-        `${wishCurrency} ${wishCurrency === "USD" ? amt.toFixed(2) : amt.toLocaleString()}${
-          note.trim() ? ` • ${note.trim()}` : ""
-        }`
-      );
-
-      setWishAmount("");
-      setNote("");
-      await refreshWishBalances();
-    } catch (e: any) {
-      setErr(e?.message ?? "Wish  failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function refreshCashMetrics() {
     try {
       const { data, error } = await supabase
@@ -265,32 +192,37 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(5000);
+
       if (error) throw error;
 
       const rows = (data ?? []) as any[];
-      const cashIn = rows.filter((r) => r.pay_type === "cash").reduce((a, r) => a + Number(r.amount || 0), 0);
-      const cashOut = rows.filter((r) => r.pay_type === "payout").reduce((a, r) => a + Number(r.amount || 0), 0);
+      const cashIn = rows
+        .filter((r) => r.pay_type === "cash")
+        .reduce((a, r) => a + Number(r.amount || 0), 0);
+
+      const cashOut = rows
+        .filter((r) => r.pay_type === "payout")
+        .reduce((a, r) => a + Number(r.amount || 0), 0);
+
       setCashBalance(cashIn - cashOut);
 
       const startISO = startOfTodayISO();
       const today = rows.filter((r) => (r.created_at || "") >= startISO);
-      const tIn = today.filter((r) => r.pay_type === "cash").reduce((a, r) => a + Number(r.amount || 0), 0);
-      const tOut = today.filter((r) => r.pay_type === "payout").reduce((a, r) => a + Number(r.amount || 0), 0);
+
+      const tIn = today
+        .filter((r) => r.pay_type === "cash")
+        .reduce((a, r) => a + Number(r.amount || 0), 0);
+
+      const tOut = today
+        .filter((r) => r.pay_type === "payout")
+        .reduce((a, r) => a + Number(r.amount || 0), 0);
+
       setCashInToday(tIn);
       setCashOutToday(tOut);
     } catch {
       // ignore metrics failures
     }
   }
-  async function refreshWishLatest() {
-  const { data, error } = await supabase
-    .from("wish_transactions")
-    .select("id,created_at,type,currency,amount,note,counted")
-    .order("created_at", { ascending: false })
-    .limit(25);
-
-  if (!error) setWishLatest((data ?? []) as any);
-}
 
   async function refreshLatest() {
     const { data, error } = await supabase
@@ -308,12 +240,64 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
     refreshCashMetrics();
   }
 
-  useEffect(() => {
-  refreshLatest();
-  refreshWishBalances();
-  refreshWishLatest();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
+  async function refreshWishLatest() {
+    const { data, error } = await supabase
+      .from("wish_transactions")
+      .select("id,created_at,type,currency,amount,note,counted")
+      .order("created_at", { ascending: false })
+      .limit(25);
+
+    if (!error) setWishLatest((data ?? []) as any);
+  }
+
+  async function refreshWishBalances() {
+    const { data, error } = await supabase
+      .from("wish_transactions")
+      .select("type,currency,amount,counted")
+      .order("created_at", { ascending: false })
+      .limit(5000);
+
+    if (error) return;
+
+    let usd = 0;
+    let lbp = 0;
+    let systemUsd = 0;
+
+    for (const r of data || []) {
+      const amt = Number((r as any).amount || 0);
+      const type = (r as any).type as "transfer" | "receive";
+      const cur = (r as any).currency as "USD" | "LBP";
+      const counted = Boolean((r as any).counted);
+
+      // Balance: transfer يزيد، receive ينقص
+      const sign = type === "transfer" ? +1 : -1;
+      if (cur === "USD") usd += sign * amt;
+      if (cur === "LBP") lbp += sign * amt;
+
+      // Wish System: فقط receive مع counted (USD)
+      if (type === "receive" && counted && cur === "USD") systemUsd += amt;
+    }
+
+    setWishUsdBalance(usd);
+    setWishLbpBalance(lbp);
+    setWishSystemUsd(systemUsd);
+  }
+
+  async function markWishCounted(id: string) {
+    setErr(null);
+    const { error } = await supabase
+      .from("wish_transactions")
+      .update({ counted: true })
+      .eq("id", id);
+
+    if (error) {
+      setErr(error.message);
+      return;
+    }
+
+    await refreshWishBalances();
+    await refreshWishLatest();
+  }
 
   function addToCart(name: string, price: number) {
     setCart((prev) => {
@@ -348,6 +332,45 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
     setCustomName("");
     setCustomPrice("");
     customNameRef.current?.focus();
+  }
+
+  async function saveWish() {
+    setErr(null);
+    setLoading(true);
+
+    try {
+      const amt = Number(wishAmount);
+      if (!Number.isFinite(amt) || amt <= 0) {
+        setErr("Enter Wish amount.");
+        return;
+      }
+
+      const { error } = await supabase.from("wish_transactions").insert({
+        type: wishType,
+        currency: wishCurrency,
+        amount: amt,
+        note: note.trim() || null,
+        counted: false, // default
+      });
+
+      if (error) throw error;
+
+      notify(
+        `Wish ${wishType === "transfer" ? "Transfer (+)" : "Receive (-)"}`,
+        `${wishCurrency} ${
+          wishCurrency === "USD" ? amt.toFixed(2) : amt.toLocaleString()
+        }${note.trim() ? ` • ${note.trim()}` : ""}`
+      );
+
+      setWishAmount("");
+      setNote("");
+      await refreshWishBalances();
+      await refreshWishLatest();
+    } catch (e: any) {
+      setErr(e?.message ?? "Wish failed");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function onPay() {
@@ -409,7 +432,6 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
 
       if (saleErr) throw saleErr;
 
-      // nice line for notifications + latest list
       const itemsText = itemsPayload.map((x) => `${x.qty}x ${x.name}`).join(", ");
       const baseLine =
         `${String(category)} • ${money(amount)}` +
@@ -475,14 +497,13 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
       setDueAt("");
       await refreshLatest();
     } catch (e: any) {
-      setErr(e?.message ?? " failed");
+      setErr(e?.message ?? "Failed");
     } finally {
       setLoading(false);
     }
   }
 
   async function softDelete(id: string) {
-    // 1) password gate مرة وحدة
     if (!canDelete) {
       const pass = prompt("Enter delete password:");
       if (pass !== "1234") {
@@ -493,7 +514,6 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
       sessionStorage.setItem("canDelete", "1");
     }
 
-    // 2) confirm delete
     const ok = confirm("Delete this sale? (It will be hidden from totals)");
     if (!ok) return;
 
@@ -507,7 +527,7 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
       return;
     }
 
-    notify("Sale deleted", `A sale was deleted (hidden from totals).`);
+    notify("Sale deleted", "A sale was deleted (hidden from totals).");
     await refreshLatest();
   }
 
@@ -531,11 +551,20 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
 
       <div className="page">
         <div className="header">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
             <div>
               <h1>Sales</h1>
               <div className="sub">
-                <span style={{ fontWeight: 900 }}>Today:</span> {new Date().toLocaleDateString()} • USD • fast POS
+                <span style={{ fontWeight: 900 }}>Today:</span>{" "}
+                {new Date().toLocaleDateString()} • USD • fast POS
               </div>
             </div>
             <div style={{ minWidth: 280 }}>
@@ -544,35 +573,36 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
           </div>
         </div>
 
+        {/* ✅ TOP METRICS */}
         <div className="grid metrics" style={{ marginTop: 14 }}>
-  <div className="card">
-    <div className="muted">Wish Balance (USD)</div>
-    <div className="big">${Number(wishUsdBalance || 0).toFixed(2)}</div>
-  </div>
+          <div className="card">
+            <div className="muted">Wish Balance (USD)</div>
+            <div className="big">${Number(wishUsdBalance || 0).toFixed(2)}</div>
+          </div>
 
-  <div className="card">
-    <div className="muted">Wish Balance (LBP)</div>
-    <div className="big">{Number(wishLbpBalance || 0).toLocaleString()} LBP</div>
-  </div>
+          <div className="card">
+            <div className="muted">Wish Balance (LBP)</div>
+            <div className="big">{Number(wishLbpBalance || 0).toLocaleString()} LBP</div>
+          </div>
 
-  <div className="card">
-    <div className="muted">Wish System (USD)</div>
-    <div className="big">${Number(wishSystemUsd || 0).toFixed(2)}</div>
-    <div className="tiny">Receive ✔ counted</div>
-  </div>
+          <div className="card">
+            <div className="muted">Wish System (USD)</div>
+            <div className="big">${Number(wishSystemUsd || 0).toFixed(2)}</div>
+            <div className="tiny">Receive ✔ counted</div>
+          </div>
 
-  <div className="card">
-    <div className="muted">Cash balance</div>
-    <div className="big">{money(cashBalance)}</div>
-    <div className="tiny">cash in − payout</div>
-  </div>
+          <div className="card">
+            <div className="muted">Cash balance</div>
+            <div className="big">{money(cashBalance)}</div>
+            <div className="tiny">cash in − payout</div>
+          </div>
 
-  <div className="card">
-    <div className="muted">Cash in/out (today)</div>
-    <div className="big">{money(cashInToday - cashOutToday)}</div>
-    <div className="tiny">today net</div>
-  </div>
-</div>
+          <div className="card">
+            <div className="muted">Cash in/out (today)</div>
+            <div className="big">{money(cashInToday - cashOutToday)}</div>
+            <div className="tiny">today net</div>
+          </div>
+        </div>
 
         {err ? <div className="toast error">{err}</div> : null}
 
@@ -584,40 +614,73 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
             {/* Top Pay Controls + Wish Button */}
             <div className="payTop">
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button className={`pill ${payType === "cash" && !isWish ? "active" : ""}`} onClick={() => { setPayType("cash"); setCategory("Phones"); }} type="button">
+                <button
+                  className={`pill ${payType === "cash" && !isWish ? "active" : ""}`}
+                  onClick={() => {
+                    setPayType("cash");
+                    setCategory("Phones");
+                  }}
+                  type="button"
+                >
                   Cash (+)
                 </button>
-                <button className={`pill ${payType === "debt" && !isWish ? "active" : ""}`} onClick={() => { setPayType("debt"); setCategory("Phones"); }} type="button">
+
+                <button
+                  className={`pill ${payType === "debt" && !isWish ? "active" : ""}`}
+                  onClick={() => {
+                    setPayType("debt");
+                    setCategory("Phones");
+                  }}
+                  type="button"
+                >
                   Debt
                 </button>
-                <button className={`pill ${payType === "payout" && !isWish ? "active" : ""}`} onClick={() => { setPayType("payout"); setCategory("Phones"); }} type="button">
+
+                <button
+                  className={`pill ${payType === "payout" && !isWish ? "active" : ""}`}
+                  onClick={() => {
+                    setPayType("payout");
+                    setCategory("Phones");
+                  }}
+                  type="button"
+                >
                   Payout (-)
                 </button>
 
                 {/* ✅ Wish beside payout */}
-                <button className={`pill ${isWish ? "active" : ""}`} onClick={() => setCategory("Wish")} type="button">
+                <button
+                  className={`pill ${isWish ? "active" : ""}`}
+                  onClick={() => setCategory("Wish")}
+                  type="button"
+                >
                   Wish
                 </button>
               </div>
 
               {!isWish ? (
                 <div className="payTopRight">
-                  <div className="muted" style={{ fontWeight: 900, fontSize: 12 }}>Total</div>
+                  <div className="muted" style={{ fontWeight: 900, fontSize: 12 }}>
+                    Total
+                  </div>
                   <div className="big" style={{ fontSize: 22 }}>
                     {payType === "payout" ? money(Number(payoutAmount || 0)) : money(total)}
                   </div>
                   <button className="btn primary" type="button" onClick={onPay} disabled={loading}>
-                    {loading ? "Saving…" : payType === "payout" ? "" : "PAY"}
+                    {loading ? "Saving…" : payType === "payout" ? "SAVE PAYOUT" : "PAY"}
                   </button>
                 </div>
               ) : (
                 <div className="payTopRight">
-                  <div className="muted" style={{ fontWeight: 900, fontSize: 12 }}>Wish</div>
+                  <div className="muted" style={{ fontWeight: 900, fontSize: 12 }}>
+                    Wish
+                  </div>
                   <div className="big" style={{ fontSize: 22 }}>
-                    {wishCurrency === "USD" ? `$${Number(wishUsdBalance || 0).toFixed(2)}` : `${Number(wishLbpBalance || 0).toLocaleString()} LBP`}
+                    {wishCurrency === "USD"
+                      ? `$${Number(wishUsdBalance || 0).toFixed(2)}`
+                      : `${Number(wishLbpBalance || 0).toLocaleString()} LBP`}
                   </div>
                   <button className="btn primary" type="button" onClick={saveWish} disabled={loading}>
-                    {loading ? "Saving…" : " WISH"}
+                    {loading ? "Saving…" : "SAVE WISH"}
                   </button>
                 </div>
               )}
@@ -625,9 +688,14 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
 
             {/* Categories row (POS only) */}
             {!isWish ? (
-              <div className="pillRow">
+              <div className="pillRow" style={{ marginTop: 10 }}>
                 {CATEGORIES.map((c) => (
-                  <button key={c} className={`pill ${category === c ? "active" : ""}`} onClick={() => setCategory(c)} type="button">
+                  <button
+                    key={c}
+                    className={`pill ${category === c ? "active" : ""}`}
+                    onClick={() => setCategory(c)}
+                    type="button"
+                  >
                     {c}
                   </button>
                 ))}
@@ -639,44 +707,41 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
             {/* ✅ WISH UI */}
             {isWish ? (
               <>
-                <div className="sectionTitle" style={{ marginTop: 6 }}>Wish System</div>
+                <div className="sectionTitle" style={{ marginTop: 6 }}>
+                  Wish System
+                </div>
                 <div className="muted">Transfer يزيد الرصيد • Receive ينقص (ما بيتدخل بالكاش)</div>
 
-                <div className="grid metrics" style={{ marginTop: 12 }}>
-                  <div className="card">
-                    <div className="muted">Wish Balance USD</div>
-                    <div className="big">${Number(wishUsdBalance || 0).toFixed(2)}</div>
-                    <div className="tiny">separate</div>
-                  </div>
-
-                  <div className="card">
-                    <div className="muted">Wish Balance LBP</div>
-                    <div className="big">{Number(wishLbpBalance || 0).toLocaleString()} LBP</div>
-                    <div className="tiny">separate</div>
-                  </div>
-
-                  <div className="card">
-                    <div className="muted">Quick Action</div>
-                    <div className="tiny"> transfer / receive</div>
-                  </div>
-                </div>
-
-                <div className="divider" />
-
-                <div className="pillRow">
-                  <button className={`pill ${wishType === "transfer" ? "active" : ""}`} onClick={() => setWishType("transfer")} type="button">
+                <div className="pillRow" style={{ marginTop: 12 }}>
+                  <button
+                    className={`pill ${wishType === "transfer" ? "active" : ""}`}
+                    onClick={() => setWishType("transfer")}
+                    type="button"
+                  >
                     Transfer (+)
                   </button>
-                  <button className={`pill ${wishType === "receive" ? "active" : ""}`} onClick={() => setWishType("receive")} type="button">
+                  <button
+                    className={`pill ${wishType === "receive" ? "active" : ""}`}
+                    onClick={() => setWishType("receive")}
+                    type="button"
+                  >
                     Receive (-)
                   </button>
                 </div>
 
                 <div className="pillRow" style={{ marginTop: 10 }}>
-                  <button className={`pill ${wishCurrency === "USD" ? "active" : ""}`} onClick={() => setWishCurrency("USD")} type="button">
+                  <button
+                    className={`pill ${wishCurrency === "USD" ? "active" : ""}`}
+                    onClick={() => setWishCurrency("USD")}
+                    type="button"
+                  >
                     USD
                   </button>
-                  <button className={`pill ${wishCurrency === "LBP" ? "active" : ""}`} onClick={() => setWishCurrency("LBP")} type="button">
+                  <button
+                    className={`pill ${wishCurrency === "LBP" ? "active" : ""}`}
+                    onClick={() => setWishCurrency("LBP")}
+                    type="button"
+                  >
                     LBP
                   </button>
                 </div>
@@ -702,38 +767,51 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
                 </div>
 
                 <div className="muted" style={{ marginTop: 10, fontWeight: 800 }}>
-                  Tip: Transfer يزيد • Receive ينقص — والـ Cash totals ما بيتأثروا.
+                  Tip: Receive ينقص balance دايمًا — بس Wish System يزيد لما تكبس Count ✔
                 </div>
+
                 <div className="divider" />
 
-<div className="sectionTitle" style={{ marginTop: 6 }}>Wish History</div>
-<div className="muted">آخر عمليات Transfer / Receive</div>
+                {/* Wish History */}
+                <div className="sectionTitle" style={{ marginTop: 6 }}>
+                  Wish History
+                </div>
+                <div className="muted">آخر عمليات Transfer / Receive</div>
 
-<div style={{ marginTop: 10 }}>
-  {wishLatest.length === 0 ? <div className="muted">No wish transactions yet.</div> : null}
+                <div style={{ marginTop: 10 }}>
+                  {wishLatest.length === 0 ? (
+                    <div className="muted">No wish transactions yet.</div>
+                  ) : null}
 
-  {wishLatest.map((w) => (
-    <div key={w.id} className="saleRow">
-      <div>
-        <div className="saleTitle">
-          {w.type === "transfer" ? "Transfer (+)" : "Receive (-)"} • {w.currency}
-          {w.type === "receive" && w.counted ? " • COUNTED ✔" : ""}
-        </div>
-        <div className="saleSub">
-          {new Date(w.created_at).toLocaleString()}
-          {w.note ? ` • ${w.note}` : ""}
-        </div>
-      </div>
-      <div className="saleRight">
-        <div className="big">
-          {w.currency === "USD"
-            ? `$${Number(w.amount).toFixed(2)}`
-            : `${Number(w.amount).toLocaleString()} LBP`}
-        </div>
-      </div>
-    </div>
-  ))}
-</div>
+                  {wishLatest.map((w) => (
+                    <div key={w.id} className="saleRow">
+                      <div>
+                        <div className="saleTitle">
+                          {w.type === "transfer" ? "Transfer (+)" : "Receive (-)"} • {w.currency}
+                          {w.type === "receive" && w.counted ? " • COUNTED ✔" : ""}
+                        </div>
+                        <div className="saleSub">
+                          {new Date(w.created_at).toLocaleString()}
+                          {w.note ? ` • ${w.note}` : ""}
+                        </div>
+                      </div>
+
+                      <div className="saleRight">
+                        <div className="big">
+                          {w.currency === "USD"
+                            ? `$${Number(w.amount).toFixed(2)}`
+                            : `${Number(w.amount).toLocaleString()} LBP`}
+                        </div>
+
+                        {w.type === "receive" && !w.counted ? (
+                          <button className="btn" type="button" onClick={() => markWishCounted(w.id)}>
+                            Count ✔
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </>
             ) : (
               <>
@@ -752,7 +830,10 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
                   </div>
                 ) : (
                   <>
-                    <div className="row" style={{ marginTop: 14, display: "flex", justifyContent: "space-between" }}>
+                    <div
+                      className="row"
+                      style={{ marginTop: 14, display: "flex", justifyContent: "space-between" }}
+                    >
                       <div className="label">Tap item to add • edit prices in cart</div>
                       <button className="link" type="button" onClick={openManage}>
                         Manage items
@@ -760,7 +841,10 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
                     </div>
 
                     <div className="pillRow" style={{ marginTop: 10 }}>
-                      {categoryItems.length === 0 ? <div className="muted">No quick items in this category.</div> : null}
+                      {categoryItems.length === 0 ? (
+                        <div className="muted">No quick items in this category.</div>
+                      ) : null}
+
                       {categoryItems.map((it, idx) => (
                         <button
                           key={`${it.name}-${idx}`}
@@ -798,7 +882,9 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
 
                     <div className="divider" />
 
-                    <div className="sectionTitle" style={{ marginTop: 6 }}>Cart</div>
+                    <div className="sectionTitle" style={{ marginTop: 6 }}>
+                      Cart
+                    </div>
                     {cart.length === 0 ? <div className="muted">No items yet.</div> : null}
 
                     <div className="cart">
@@ -818,6 +904,7 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
                                 onChange={(e) => updateCart(i, { qty: Number(e.target.value || 0) })}
                               />
                             </div>
+
                             <div className="mini">
                               <span className="miniLabel">Price</span>
                               <input
@@ -826,6 +913,7 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
                                 onChange={(e) => updateCart(i, { price: Number(e.target.value || 0) })}
                               />
                             </div>
+
                             <button className="btn danger" type="button" onClick={() => removeCart(i)}>
                               Remove
                             </button>
@@ -838,13 +926,28 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
                       <div style={{ marginTop: 12 }}>
                         <div className="sectionTitle">Debt details</div>
                         <div className="grid two" style={{ gap: 10 }}>
-                          <input className="input" placeholder="Customer name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-                          <input className="input" placeholder="Customer phone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+                          <input
+                            className="input"
+                            placeholder="Customer name"
+                            value={customerName}
+                            onChange={(e) => setCustomerName(e.target.value)}
+                          />
+                          <input
+                            className="input"
+                            placeholder="Customer phone"
+                            value={customerPhone}
+                            onChange={(e) => setCustomerPhone(e.target.value)}
+                          />
                         </div>
 
                         <div className="row" style={{ marginTop: 10 }}>
                           <label className="label">Due date & time</label>
-                          <input className="input" type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
+                          <input
+                            className="input"
+                            type="datetime-local"
+                            value={dueAt}
+                            onChange={(e) => setDueAt(e.target.value)}
+                          />
                           <div className="muted" style={{ marginTop: 6 }}>
                             After saving debt, WhatsApp opens directly with a ready message.
                           </div>
@@ -854,7 +957,12 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
 
                     <div style={{ marginTop: 12 }} className="row">
                       <label className="label">Note (details)</label>
-                      <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
+                      <input
+                        className="input"
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder="Optional"
+                      />
                     </div>
 
                     <div className="muted" style={{ marginTop: 10, fontWeight: 800 }}>
@@ -867,7 +975,12 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
                   <>
                     <div style={{ marginTop: 12 }} className="row">
                       <label className="label">Note (why payout?)</label>
-                      <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
+                      <input
+                        className="input"
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder="Optional"
+                      />
                     </div>
 
                     <div className="muted" style={{ marginTop: 10, fontWeight: 800 }}>
@@ -886,6 +999,7 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
 
             <div style={{ marginTop: 10 }}>
               {latest.length === 0 ? <div className="muted">No sales yet.</div> : null}
+
               {latest.map((s) => {
                 const itemsLine =
                   Array.isArray(s.items) && s.items.length
@@ -904,6 +1018,7 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
                         {itemsLine ? ` • ${itemsLine}` : ""}
                       </div>
                     </div>
+
                     <div className="saleRight">
                       <div className="big">{money(s.amount)}</div>
                       <button className="btn danger" type="button" onClick={() => softDelete(s.id)}>
@@ -928,42 +1043,208 @@ const [wishSystemLbp, setWishSystemLbp] = useState<number>(0);
       </div>
 
       <style jsx>{`
-        .grid { display: grid; gap: 14px; }
-        .grid.two { grid-template-columns: 1.2fr 0.8fr; }
-        .grid.three { grid-template-columns: 1.4fr 0.8fr 0.6fr; }
-       .grid.metrics { grid-template-columns: repeat(5, 1fr); }
-@media (max-width: 980px) { .grid.metrics { grid-template-columns: repeat(2, 1fr); } }
-        .divider { height: 1px; background: rgba(255,255,255,0.08); margin: 14px 0; }
-        .row { margin-top: 10px; }
-        .label { display:block; font-size: 12px; color: rgba(255,255,255,0.65); margin-bottom: 6px; }
-        .input { width: 100%; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); color: white; }
-        .btn { padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.06); color: white; cursor: pointer; }
-        .btn.primary { background: linear-gradient(90deg, rgba(246,196,83,0.95), rgba(212,161,42,0.95)); border-color: rgba(246,196,83,0.35); color: #1a1306; }
-        .btn.danger { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.35); }
-        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .link { background: transparent; border: none; color: rgba(246,196,83,1); cursor: pointer; font-weight: 900; }
-        .pillRow { display:flex; flex-wrap: wrap; gap: 10px; }
-        .pill { padding: 10px 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.04); color: white; cursor:pointer; }
-        .pill.active { background: rgba(246,196,83,0.14); border-color: rgba(246,196,83,0.35); }
-        .payTop { display:flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; padding: 12px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.10); background: rgba(0,0,0,0.18); }
-        .payTopRight { display:flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
-        .pillSub { margin-left: 8px; opacity: 0.65; font-size: 12px; }
-        .muted { color: rgba(255,255,255,0.55); font-size: 13px; }
-        .big { font-size: 20px; font-weight: 700; }
-        .tiny { color: rgba(255,255,255,0.5); font-size: 12px; margin-top: 4px; }
-        .cart { margin-top: 10px; display:flex; flex-direction: column; gap: 10px; }
-        .cartRow { display:flex; justify-content: space-between; gap: 12px; padding: 12px; border-radius: 16px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
-        .cartName { font-weight: 700; }
-        .cartSub { font-size: 12px; opacity: 0.7; margin-top: 2px; }
-        .cartControls { display:flex; align-items: center; gap: 10px; }
-        .mini { display:flex; align-items: center; gap: 8px; }
-        .miniLabel { font-size: 12px; opacity: 0.65; }
-        .miniInput { width: 70px; padding: 8px 10px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); color: white; }
-        .saleRow { display:flex; justify-content: space-between; align-items:flex-start; gap: 12px; padding: 12px; border-radius: 16px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); margin-top: 10px; }
-        .saleTitle { font-weight: 700; }
-        .saleSub { font-size: 12px; opacity: 0.7; margin-top: 2px; }
-        .saleRight { display:flex; flex-direction: column; align-items:flex-end; gap: 8px; }
-        .toast.error { margin: 10px 0; padding: 10px 12px; border-radius: 14px; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35); }
+        .grid {
+          display: grid;
+          gap: 14px;
+        }
+        .grid.two {
+          grid-template-columns: 1.2fr 0.8fr;
+        }
+        .grid.three {
+          grid-template-columns: 1.4fr 0.8fr 0.6fr;
+        }
+        .grid.metrics {
+          grid-template-columns: repeat(5, 1fr);
+        }
+        @media (max-width: 980px) {
+          .grid.metrics {
+            grid-template-columns: repeat(2, 1fr);
+          }
+          .grid.two {
+            grid-template-columns: 1fr;
+          }
+        }
+        .divider {
+          height: 1px;
+          background: rgba(255, 255, 255, 0.08);
+          margin: 14px 0;
+        }
+        .row {
+          margin-top: 10px;
+        }
+        .label {
+          display: block;
+          font-size: 12px;
+          color: rgba(255, 255, 255, 0.65);
+          margin-bottom: 6px;
+        }
+        .input {
+          width: 100%;
+          padding: 10px 12px;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          color: white;
+        }
+        .btn {
+          padding: 10px 14px;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.06);
+          color: white;
+          cursor: pointer;
+        }
+        .btn.primary {
+          background: linear-gradient(90deg, rgba(246, 196, 83, 0.95), rgba(212, 161, 42, 0.95));
+          border-color: rgba(246, 196, 83, 0.35);
+          color: #1a1306;
+        }
+        .btn.danger {
+          background: rgba(239, 68, 68, 0.12);
+          border-color: rgba(239, 68, 68, 0.35);
+        }
+        .btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        .link {
+          background: transparent;
+          border: none;
+          color: rgba(246, 196, 83, 1);
+          cursor: pointer;
+          font-weight: 900;
+        }
+        .pillRow {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+        .pill {
+          padding: 10px 14px;
+          border-radius: 999px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.04);
+          color: white;
+          cursor: pointer;
+        }
+        .pill.active {
+          background: rgba(246, 196, 83, 0.14);
+          border-color: rgba(246, 196, 83, 0.35);
+        }
+        .payTop {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-top: 10px;
+          padding: 12px;
+          border-radius: 16px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: rgba(0, 0, 0, 0.18);
+        }
+        .payTopRight {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+        .pillSub {
+          margin-left: 8px;
+          opacity: 0.65;
+          font-size: 12px;
+        }
+        .muted {
+          color: rgba(255, 255, 255, 0.55);
+          font-size: 13px;
+        }
+        .big {
+          font-size: 20px;
+          font-weight: 700;
+        }
+        .tiny {
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 12px;
+          margin-top: 4px;
+        }
+        .cart {
+          margin-top: 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .cartRow {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 12px;
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .cartName {
+          font-weight: 700;
+        }
+        .cartSub {
+          font-size: 12px;
+          opacity: 0.7;
+          margin-top: 2px;
+        }
+        .cartControls {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .mini {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .miniLabel {
+          font-size: 12px;
+          opacity: 0.65;
+        }
+        .miniInput {
+          width: 70px;
+          padding: 8px 10px;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          color: white;
+        }
+        .saleRow {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          padding: 12px;
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          margin-top: 10px;
+        }
+        .saleTitle {
+          font-weight: 700;
+        }
+        .saleSub {
+          font-size: 12px;
+          opacity: 0.7;
+          margin-top: 2px;
+        }
+        .saleRight {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 8px;
+        }
+        .toast.error {
+          margin: 10px 0;
+          padding: 10px 12px;
+          border-radius: 14px;
+          background: rgba(239, 68, 68, 0.12);
+          border: 1px solid rgba(239, 68, 68, 0.35);
+        }
       `}</style>
     </>
   );
@@ -998,13 +1279,14 @@ function ManageModal({
     setRows((prev) => prev.filter((_, idx) => idx !== i));
   }
 
- function save() {
-  onSave(
-    rows
-      .map((x) => ({ name: x.name.trim(), price: Number(x.price || 0) }))
-.filter((x) => x.name.length > 0)
-  );
-}
+  function save() {
+    onSave(
+      rows
+        .map((x) => ({ name: x.name.trim(), price: Number(x.price || 0) }))
+        .filter((x) => x.name.length > 0)
+    );
+  }
+
   return (
     <div className="modalWrap" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -1045,9 +1327,10 @@ function ManageModal({
           <button className="btn" type="button" onClick={addRow}>
             Add item
           </button>
-       <button className="btn primary" type="button" onClick={save}>
-  Save
-</button>
+
+          <button className="btn primary" type="button" onClick={save}>
+            Save
+          </button>
         </div>
       </div>
 
@@ -1055,7 +1338,7 @@ function ManageModal({
         .modalWrap {
           position: fixed;
           inset: 0;
-          background: rgba(0,0,0,0.55);
+          background: rgba(0, 0, 0, 0.55);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1066,21 +1349,69 @@ function ManageModal({
           width: min(900px, 100%);
           border-radius: 20px;
           background: rgba(15, 23, 42, 0.92);
-          border: 1px solid rgba(255,255,255,0.10);
-          box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
           padding: 16px;
         }
-        .modalHeader { display:flex; justify-content: space-between; align-items: center; gap: 12px; }
-        .modalTitle { font-size: 18px; font-weight: 800; }
-        .modalSub { font-size: 12px; opacity: 0.7; margin-top: 2px; }
-        .modalBody { margin-top: 14px; display:flex; flex-direction: column; gap: 10px; }
-        .manageRow { display:grid; grid-template-columns: 1.4fr 0.6fr 0.4fr; gap: 10px; }
-        .modalFooter { margin-top: 14px; display:flex; justify-content: space-between; }
-        .input { width: 100%; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); color: white; }
-        .btn { padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.06); color: white; cursor: pointer; }
-        .btn.primary { background: linear-gradient(90deg, rgba(59,130,246,0.9), rgba(37,99,235,0.9)); border-color: rgba(59,130,246,0.35); }
-        .btn.danger { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.35); }
-        .muted { color: rgba(255,255,255,0.55); font-size: 13px; }
+        .modalHeader {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+        }
+        .modalTitle {
+          font-size: 18px;
+          font-weight: 800;
+        }
+        .modalSub {
+          font-size: 12px;
+          opacity: 0.7;
+          margin-top: 2px;
+        }
+        .modalBody {
+          margin-top: 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .manageRow {
+          display: grid;
+          grid-template-columns: 1.4fr 0.6fr 0.4fr;
+          gap: 10px;
+        }
+        .modalFooter {
+          margin-top: 14px;
+          display: flex;
+          justify-content: space-between;
+        }
+        .input {
+          width: 100%;
+          padding: 10px 12px;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          color: white;
+        }
+        .btn {
+          padding: 10px 14px;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.06);
+          color: white;
+          cursor: pointer;
+        }
+        .btn.primary {
+          background: linear-gradient(90deg, rgba(59, 130, 246, 0.9), rgba(37, 99, 235, 0.9));
+          border-color: rgba(59, 130, 246, 0.35);
+        }
+        .btn.danger {
+          background: rgba(239, 68, 68, 0.12);
+          border-color: rgba(239, 68, 68, 0.35);
+        }
+        .muted {
+          color: rgba(255, 255, 255, 0.55);
+          font-size: 13px;
+        }
       `}</style>
     </div>
   );
