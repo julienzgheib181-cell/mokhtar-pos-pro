@@ -133,6 +133,22 @@ const [wishCurrency, setWishCurrency] = useState<"USD" | "LBP">("USD");
 const [wishAmount, setWishAmount] = useState<string>("");
 const [wishUsdBalance, setWishUsdBalance] = useState<number>(0);
 const [wishLbpBalance, setWishLbpBalance] = useState<number>(0);
+  const [wishType, setWishType] = useState<"transfer" | "receive">("transfer");
+const [wishCurrency, setWishCurrency] = useState<"USD" | "LBP">("USD");
+const [wishAmount, setWishAmount] = useState<string>("");
+
+// خيار الـ receive
+const [wishCountAsReceived, setWishCountAsReceived] = useState(true);
+
+// Totals داخل wish
+const [wishUsdTotal, setWishUsdTotal] = useState(0);
+const [wishLbpTotal, setWishLbpTotal] = useState(0);
+
+const [wishUsdTransferTotal, setWishUsdTransferTotal] = useState(0);
+const [wishLbpTransferTotal, setWishLbpTransferTotal] = useState(0);
+
+const [wishUsdReceivedTotal, setWishUsdReceivedTotal] = useState(0);
+const [wishLbpReceivedTotal, setWishLbpReceivedTotal] = useState(0);
 
   useEffect(() => {
     setCatalog(loadCatalog());
