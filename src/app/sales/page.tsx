@@ -167,29 +167,38 @@ export default function SalesPage() {
     return d.toISOString();
   }
 
-  async function refreshWishBalances() {
-    const { data, error } = await supabase
-      .from("wish_transactions")
-      .select("type,currency,amount,created_at")
-      .order("created_at", { ascending: false })
-      .limit(5000);
+ async function refreshWishBalances() {
+  const { data, error } = await supabase
+    .from("wish_transactions")
+    .select("type,currency,amount,counted")
+    .order("created_at", { ascending: false })
+    .limit(5000);
 
-    if (error) return;
+  if (error) return;
 
-    let usd = 0;
-    let lbp = 0;
+  let usd = 0;
+  let lbp = 0;
+  let systemUsd = 0;
 
-    for (const r of data || []) {
-      const amt = Number((r as any).amount || 0);
-      // transfer يزيد - receive ينقص
-      const sign = (r as any).type === "transfer" ? +1 : -1;
-      if ((r as any).currency === "USD") usd += sign * amt;
-      if ((r as any).currency === "LBP") lbp += sign * amt;
-    }
+  for (const r of data || []) {
+    const amt = Number((r as any).amount || 0);
+    const type = (r as any).type; // transfer / receive
+    const cur = (r as any).currency; // USD / LBP
+    const counted = Boolean((r as any).counted);
 
-    setWishUsdBalance(usd);
-    setWishLbpBalance(lbp);
+    // Balance: transfer يزيد، receive ينقص
+    const sign = type === "transfer" ? +1 : -1;
+    if (cur === "USD") usd += sign * amt;
+    if (cur === "LBP") lbp += sign * amt;
+
+    // Wish System: فقط receive مع counted
+    if (type === "receive" && counted && cur === "USD") systemUsd += amt;
   }
+
+  setWishUsdBalance(usd);
+  setWishLbpBalance(lbp);
+  setWishSystemUsd(systemUsd);
+}
 
   async function saveWish() {
     setErr(null);
